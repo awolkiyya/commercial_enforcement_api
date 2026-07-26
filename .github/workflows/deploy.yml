@@ -1,0 +1,160 @@
+name: Deploy Laravel API
+
+on:
+  push:
+    branches:
+      - main
+
+
+jobs:
+
+  deploy:
+
+    runs-on: ubuntu-latest
+
+
+    steps:
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+
+        with:
+
+          host: ${{ secrets.SSH_HOST }}
+
+          username: ${{ secrets.SSH_USER }}
+
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+
+          script: |
+
+            set -e
+
+
+            echo "🚀 Starting Commercial Enforcement API Deployment"
+
+
+            cd /home/apiadmin/api/commercial_enforcement_api
+
+
+
+            echo "📥 Pulling latest code"
+
+            git pull origin main
+
+
+
+            echo "🔒 Enabling maintenance mode"
+
+            docker compose exec -T app php artisan down || true
+
+
+
+            echo "🐳 Building application container"
+
+            docker compose build app
+
+
+
+            echo "🚀 Starting containers"
+
+            docker compose up -d --remove-orphans
+
+
+
+            echo "🔒 Re-enabling maintenance mode after container restart"
+
+            docker compose exec -T app php artisan down || true
+
+
+
+            echo "📦 Installing PHP dependencies"
+
+            docker compose exec -T app \
+            composer install \
+            --no-dev \
+            --optimize-autoloader \
+            --no-interaction \
+            --no-scripts
+
+
+
+            echo "🗄 Running database migrations"
+
+            docker compose exec -T app \
+            php artisan migrate --force
+
+
+
+            echo "🌱 Running database seeders"
+
+            docker compose exec -T app \
+            php artisan db:seed \
+            --force
+
+
+
+            echo "🔐 Fixing Laravel permissions"
+
+            docker compose exec -T app sh -c "
+              chown -R www-data:www-data storage bootstrap/cache &&
+              chmod -R 775 storage bootstrap/cache
+            "
+
+
+
+            echo "⚡ Clearing Laravel cache"
+
+            docker compose exec -T app \
+            php artisan optimize:clear
+
+
+
+            echo "⚡ Rebuilding Laravel cache"
+
+            docker compose exec -T app \
+            php artisan config:cache
+
+            docker compose exec -T app \
+            php artisan route:cache
+
+            docker compose exec -T app \
+            php artisan view:cache
+
+
+
+            echo "🔄 Restarting queue workers"
+
+            docker compose exec -T app \
+            php artisan queue:restart || true
+
+
+
+            echo "🔍 Checking application health"
+
+            docker compose exec -T app \
+            php artisan about
+
+
+
+            echo "🧹 Cleaning unused Docker resources"
+
+            docker image prune -f
+
+
+
+            echo "🟢 Disabling maintenance mode"
+
+            docker compose exec -T app \
+            php artisan up
+
+
+
+            echo "📊 Container status"
+
+            docker compose ps
+
+
+
+            echo "✅ Commercial Enforcement API deployment completed successfully"

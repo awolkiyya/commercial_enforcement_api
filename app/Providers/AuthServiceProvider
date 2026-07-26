@@ -1,0 +1,38 @@
+<?php
+
+namespace App\Providers;
+
+use Illuminate\Foundation\Support\Providers\AuthServiceProvider as ServiceProvider;
+
+// Models
+use App\Models\City;
+use App\Models\Subcity;
+use App\Models\Wereda;
+use App\Models\User;
+
+// Policies
+use App\Policies\CityPolicy;
+use App\Policies\SubcityPolicy;
+use App\Policies\WeredaPolicy;
+use App\Policies\UserPolicy;
+
+class AuthServiceProvider extends ServiceProvider
+{
+    /**
+     * Policy mappings
+     */
+    protected $policies = [
+        City::class => CityPolicy::class,
+        Subcity::class => SubcityPolicy::class,
+        Wereda::class => WeredaPolicy::class,
+        User::class => UserPolicy::class,
+    ];
+
+    /**
+     * Register policies
+     */
+    public function boot(): void
+    {
+        $this->registerPolicies();
+    }
+}
