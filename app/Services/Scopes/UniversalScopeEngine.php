@@ -110,34 +110,33 @@ class UniversalScopeEngine
         };
     }
 
-    /**
-     * Apply nested relations recursively
-     */
-    private function applyNestedRelation($query, array $relations, User $user): void
-    {
-        if (empty($relations)) {
+     /**
+ * Apply nested relations recursively
+ */
+private function applyNestedRelation($query, array $relations, User $user): void
+{
+    if (empty($relations)) {
+        $column = ScopeMap::column($user->level);
+        $value  = $column ? ($user->{$column} ?? null) : null;
 
-            if ($user->city_id) {
-                $query->where('city_id', $user->city_id);
-            }
-
-            if ($user->subcity_id) {
-                $query->where('subcity_id', $user->subcity_id);
-            }
-
-            if ($user->wereda_id) {
-                $query->where('wereda_id', $user->wereda_id);
-            }
-
+        if (!$column || !$value) {
+            // No valid scope column/value for this level — deny
+            // rather than silently under- or over-scoping.
+            $query->whereRaw('1 = 0');
             return;
         }
 
-        $relation = array_shift($relations);
-
-        $query->whereHas($relation, function ($q) use ($relations, $user) {
-            $this->applyNestedRelation($q, $relations, $user);
-        });
+        $query->where($column, $value);
+        return;
     }
+
+    $relation = array_shift($relations);
+
+    $query->whereHas($relation, function ($q) use ($relations, $user) {
+        $this->applyNestedRelation($q, $relations, $user);
+    });
+}
+    
 
     /**
      * =====================================================

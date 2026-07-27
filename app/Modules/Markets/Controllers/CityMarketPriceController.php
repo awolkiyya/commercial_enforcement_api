@@ -18,44 +18,24 @@ class CityMarketPriceController extends Controller
         private CityMarketPriceService $service
     ) {}
     public function index(Request $request)
-    {
-        $result = $this->service->listWithSummary($request->all());
-    
-        $items = $result['items'];
-    
-        return response()->json([
-            'success' => true,
-            'message' => 'Market prices fetched successfully',
-    
-            /**
-             * =========================================================
-             * RESOURCE OUTPUT (IMPORTANT FIX)
-             * =========================================================
-             */
-            'data' => CityMarketPriceResource::collection($items),
-    
-            /**
-             * =========================================================
-             * SUMMARY
-             * =========================================================
-             */
-            'summary' => $result['summary'],
-    
-            /**
-             * =========================================================
-             * PAGINATION META
-             * =========================================================
-             */
-            'meta' => [
-                'current_page' => $items->currentPage(),
-                'per_page' => $items->perPage(),
-                'total' => $items->total(),
-                'last_page' => $items->lastPage(),
-            ],
-    
-            'timestamp' => now()->toISOString(),
-        ]);
-    }
+{
+    $filters = $request->all();
+    $result = $this->service->listWithSummary($filters);
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Market prices fetched successfully',
+        'data'    => $result['items']->items(),   // the array rows
+        'summary' => $result['summary'],
+        'meta'    => [
+            'current_page' => $result['items']->currentPage(),
+            'per_page'     => $result['items']->perPage(),
+            'total'        => $result['items']->total(),
+            'last_page'    => $result['items']->lastPage(),
+        ],
+        'timestamp' => now()->toISOString(),
+    ]);
+}
 
     /**
      * CREATE

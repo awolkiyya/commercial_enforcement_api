@@ -115,46 +115,20 @@ class UserService
 
             $roleLabel = $data['role'] ?? null;
 
-            /**
-             * PASSWORD HASH
-             */
             $data['password'] = Hash::make($data['password']);
 
-            /**
-             * CITY ASSIGNMENT (SAFE + EXPLICIT)
-             */
-            $data['city_id'] = $data['city_id']
-                ?? config('system.default_city_id')
-                ?? City::query()->value('id');
+            $data = $this->resolveGeography($data);
 
-            /**
-             * HANDLE AVATAR
-             */
             $this->handleAvatarUpload($data);
-
             unset($data['avatar']);
 
-            /**
-             * CREATE USER
-             */
             $user = User::create($data);
 
-            /**
-             * ROLE SYNC
-             */
             $this->syncRole($user, $roleLabel);
 
-            return $user->load([
-                'roles',
-                'permissions',
-                'avatarFile',
-                'city',
-                'subcity',
-                'wereda',
-            ]);
+            return $user->load(['roles', 'permissions', 'avatarFile', 'city', 'subcity', 'wereda']);
         });
     }
-
     /*
     |--------------------------------------------------------------------------
     | UPDATE USER
@@ -163,73 +137,91 @@ class UserService
     public function update(User $user, array $data): User
     {
         return DB::transaction(function () use ($user, $data) {
-    
+
             $roleLabel = $data['role'] ?? null;
-    
-            /**
-             * PASSWORD HANDLING
-             */
+
             if (!empty($data['password'])) {
                 $data['password'] = Hash::make($data['password']);
             } else {
                 unset($data['password']);
             }
-    
-            /**
-             * AVATAR HANDLING
-             */
+
             $this->handleAvatarUpload($data, $user);
             unset($data['avatar']);
-    
-            /**
-             * =========================
-             * CITY AUTO-ASSIGN LOGIC
-             * =========================
-             */
-    
-            if (!isset($data['city_id']) || empty($data['city_id'])) {
-    
-                // fallback from DB (safe default city)
-                $data['city_id'] = \App\Models\City::query()->value('id');
-    
-            } else {
-    
-                // validate provided city_id
-                $validCity = \App\Models\City::query()
-                    ->where('id', $data['city_id'])
-                    ->value('id');
-    
-                if (!$validCity) {
-                    throw new \InvalidArgumentException("Invalid city_id provided.");
-                }
-    
-                $data['city_id'] = $validCity;
-            }
-    
-            /**
-             * UPDATE USER
-             */
+
+            // level may not be in the payload on update — fall back to existing user's level
+            $data['level'] = $data['level'] ?? $user->level;
+            $data = $this->resolveGeography($data);
+
             $user->update($data);
-    
-            /**
-             * ROLE SYNC
-             */
+
             if ($roleLabel) {
                 $user->update(['role' => $roleLabel]);
             }
-    
+
             $this->syncRole($user, $roleLabel);
-    
-            return $user->refresh()->load([
-                'roles',
-                'permissions',
-                'avatarFile',
-                'city',
-                'subcity',
-                'wereda',
-            ]);
+
+            return $user->refresh()->load(['roles', 'permissions', 'avatarFile', 'city', 'subcity', 'wereda']);
         });
     }
+
+    /**
+ * Derive city_id/subcity_id from the most specific location
+ * actually provided, based on the user's level. Falls back to
+ * an explicit default only when nothing location-related was given.
+ */
+private function resolveGeography(array $data): array
+{
+    $level = $data['level'] ?? null;
+
+    if ($level === 'WEREDA' && !empty($data['wereda_id'])) {
+        $wereda = \App\Models\Wereda::with('subcity')->find($data['wereda_id']);
+
+        if (!$wereda) {
+            throw new \InvalidArgumentException('Invalid wereda_id provided.');
+        }
+
+        $data['subcity_id'] = $wereda->subcity_id;
+        $data['city_id']    = $wereda->subcity?->city_id;
+
+        return $data;
+    }
+
+    if ($level === 'SUBCITY' && !empty($data['subcity_id'])) {
+        $subcity = \App\Models\Subcity::find($data['subcity_id']);
+
+        if (!$subcity) {
+            throw new \InvalidArgumentException('Invalid subcity_id provided.');
+        }
+
+        $data['city_id'] = $subcity->city_id;
+
+        return $data;
+    }
+
+    if ($level === 'CITY') {
+
+        $adamaCity = \App\Models\City::query()
+            ->where('name', 'ADAMA')
+            ->first();
+    
+    
+        if (!$adamaCity) {
+            throw new \InvalidArgumentException(
+                'Default city ADAMA not found.'
+            );
+        }
+    
+    
+        $data['city_id'] = $adamaCity->id;
+    
+    
+        return $data;
+    }
+
+    // No level, or SUPER_ADMIN-style account with no geographic scope — leave as-is
+    return $data;
+}
 
     /*
     |--------------------------------------------------------------------------

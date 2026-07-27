@@ -122,6 +122,9 @@ class BusinessService
                 ]
             );
 
+            $subcity = \App\Models\Subcity::find($data['subcity_id']);
+
+
             // =========================
             // 2. CREATE BUSINESS
             // =========================
@@ -143,10 +146,11 @@ class BusinessService
                 'longitude' => $data['location']['longitude'] ?? null,
                 'location_accuracy' => $data['location']['accuracy'] ?? null,
 
-                // GOVERNANCE
-                'city_id' => $user->city_id,
-                'subcity_id' => $data["subcity_id"],
-                'wereda_id' => $data["wereda_id"],
+                // GOVERNANCE — derive city_id from subcity, don't trust the creating user's own city_id
+                'city_id' => $subcity?->city_id,
+                'subcity_id' => $data['subcity_id'],
+                'wereda_id' => $data['wereda_id'],
+
                 'registered_by' => $user->id,
             ]);
         });
@@ -179,9 +183,6 @@ class BusinessService
 
             $business = Business::findOrFail($id);
 
-            // =========================
-            // UPDATE OWNER IF NEEDED
-            // =========================
             if (isset($data['ownerFullName']) || isset($data['phoneNumber']) || isset($data['email'])) {
                 $owner = $business->owner;
 
@@ -194,11 +195,19 @@ class BusinessService
                 }
             }
 
-            // =========================
-            // UPDATE BUSINESS
-            // =========================
+            // Resolve subcity/wereda safely, falling back to existing values
+            $subcityId = $data['subcity_id'] ?? $business->subcity_id;
+            $weredaId  = $data['wereda_id'] ?? $business->wereda_id;
+
+            // Derive city_id fresh whenever subcity changes (or on every update, cheaply)
+            $cityId = $business->city_id;
+            if ($subcityId) {
+                $subcity = \App\Models\Subcity::find($subcityId);
+                $cityId = $subcity?->city_id ?? $cityId;
+            }
+
             $business->update([
-                'name' => $data['businessName'] ?? $business->business_name,
+                'name' => $data['businessName'] ?? $business->name,
                 'business_type_id' => $data['businessTypeId'] ?? $business->business_type_id,
 
                 'license_number' => $data['businessLicenseNumber'] ?? $business->license_number,
@@ -207,9 +216,11 @@ class BusinessService
                 'latitude' => $data['location']['latitude'] ?? $business->latitude,
                 'longitude' => $data['location']['longitude'] ?? $business->longitude,
                 'location_accuracy' => $data['location']['accuracy'] ?? $business->location_accuracy,
-                // GOVERNANCE
-                'subcity_id' => $data["subcity_id"],
-                'wereda_id' => $data["wereda_id"],
+
+                // GOVERNANCE — always consistent with each other
+                'city_id' => $cityId,
+                'subcity_id' => $subcityId,
+                'wereda_id' => $weredaId,
             ]);
 
             return $business;

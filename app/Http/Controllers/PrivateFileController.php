@@ -3,41 +3,47 @@
 namespace App\Http\Controllers;
 
 use App\Models\File;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 
 class PrivateFileController extends Controller
 {
     public function show(File $file)
     {
-        Log::info('File model state', [
-            'exists' => $file->exists,
-            'attributes' => $file->getAttributes(),
-            'route_param' => request()->route('file'),
+
+        Log::info('Serving file request', [
+            'id' => $file->id,
+            'disk' => $file->disk,
+            'path' => $file->path,
         ]);
 
-        $fullPath = storage_path('app/private/' . $file->path);
 
-        Log::info('Resolved private file path', [
-            'full_path' => $fullPath,
-            'exists' => file_exists($fullPath),
-        ]);
+        $disk = $file->disk;
 
-        if (!file_exists($fullPath)) {
 
-            Log::error('Private file not found', [
-                'file_id' => $file->id,
+        if (!Storage::disk($disk)->exists($file->path)) {
+
+            Log::error('File not found', [
+                'disk' => $disk,
                 'path' => $file->path,
-                'full_path' => $fullPath,
             ]);
 
-            abort(404, 'File not found: ' . $fullPath);
+            abort(404, 'File not found');
         }
 
-        Log::info('Serving private file', [
-            'file_id' => $file->id,
-            'full_path' => $fullPath,
-        ]);
 
-        return response()->file($fullPath);
+        return response()->file(
+            Storage::disk($disk)->path($file->path),
+            [
+                'Content-Type' =>
+                    $file->mime_type 
+                    ?? 'application/octet-stream',
+
+                'Content-Disposition' =>
+                    'inline; filename="' .
+                    $file->original_name .
+                    '"',
+            ]
+        );
     }
 }

@@ -32,7 +32,9 @@ jobs:
             set -e
 
 
+            echo "======================================"
             echo "🚀 Starting Commercial Enforcement API Deployment"
+            echo "======================================"
 
 
             cd /home/apiadmin/api/commercial_enforcement_api
@@ -41,13 +43,15 @@ jobs:
 
             echo "📥 Pulling latest code"
 
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
 
 
 
             echo "🔒 Enabling maintenance mode"
 
-            docker compose exec -T app php artisan down || true
+            docker compose exec -T app \
+            php artisan down || true
 
 
 
@@ -60,12 +64,6 @@ jobs:
             echo "🚀 Starting containers"
 
             docker compose up -d --remove-orphans
-
-
-
-            echo "🔒 Re-enabling maintenance mode after container restart"
-
-            docker compose exec -T app php artisan down || true
 
 
 
@@ -104,6 +102,18 @@ jobs:
 
 
 
+            echo "🔗 Checking Laravel storage link"
+
+            docker compose exec -T app sh -c "
+              if [ ! -L public/storage ]; then
+                php artisan storage:link
+              else
+                echo 'Storage link already exists'
+              fi
+            "
+
+
+
             echo "⚡ Clearing Laravel cache"
 
             docker compose exec -T app \
@@ -116,8 +126,10 @@ jobs:
             docker compose exec -T app \
             php artisan config:cache
 
+
             docker compose exec -T app \
             php artisan route:cache
+
 
             docker compose exec -T app \
             php artisan view:cache
@@ -157,4 +169,6 @@ jobs:
 
 
 
+            echo "======================================"
             echo "✅ Commercial Enforcement API deployment completed successfully"
+            echo "======================================"

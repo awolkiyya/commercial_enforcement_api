@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Modules\Enforcement\Controllers\InspectionController;
+use App\Modules\Inspection\Controllers\InspectionController;
 use App\Modules\Enforcement\Controllers\ViolationController;
 
 Route::prefix('enforcement')->group(function () {
