@@ -15,8 +15,9 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     libcurl4-openssl-dev \
     libicu-dev \
+    libpq-dev \
     && docker-php-ext-install \
-        pdo_mysql \
+        pdo_pgsql \
         mbstring \
         exif \
         pcntl \
@@ -29,13 +30,16 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 
+
 # =========================
 # Composer
 # =========================
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 
+
 WORKDIR /var/www
+
 
 
 # =========================
@@ -51,10 +55,12 @@ RUN composer install \
     --no-scripts
 
 
+
 # =========================
 # Application
 # =========================
 COPY . .
+
 
 
 # =========================
@@ -62,6 +68,14 @@ COPY . .
 # =========================
 COPY docker/php/custom.ini \
      /usr/local/etc/php/conf.d/custom.ini
+
+
+
+# =========================
+# Laravel optimization
+# =========================
+RUN php artisan package:discover --ansi || true
+
 
 
 # =========================
@@ -72,6 +86,10 @@ RUN mkdir -p storage/logs bootstrap/cache \
     && chmod -R 775 storage bootstrap/cache
 
 
+
+# =========================
+# PHP-FPM
+# =========================
 EXPOSE 9000
 
 
