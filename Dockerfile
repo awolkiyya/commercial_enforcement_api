@@ -1,7 +1,7 @@
 FROM php:8.3-fpm
 
 # =========================================================
-# System dependencies
+# System dependencies + PHP extensions
 # =========================================================
 
 RUN apt-get update && apt-get install -y \
@@ -38,13 +38,13 @@ RUN apt-get update && apt-get install -y \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # =========================================================
-# Application directory
+# Application
 # =========================================================
 
 WORKDIR /var/www
 
 # =========================================================
-# Composer dependency cache
+# Composer dependencies
 # =========================================================
 
 COPY composer.json composer.lock ./
@@ -64,14 +64,14 @@ RUN composer install \
 COPY . .
 
 # =========================================================
-# PHP production configuration
+# PHP configuration
 # =========================================================
 
 COPY docker/php/custom.ini \
      /usr/local/etc/php/conf.d/custom.ini
 
 # =========================================================
-# Laravel required directories
+# Laravel directories
 # =========================================================
 
 RUN mkdir -p \
@@ -79,7 +79,7 @@ RUN mkdir -p \
         bootstrap/cache
 
 # =========================================================
-# Permissions
+# Runtime permissions
 # =========================================================
 
 RUN chown -R www-data:www-data \

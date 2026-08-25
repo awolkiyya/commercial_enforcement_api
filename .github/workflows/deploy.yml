@@ -6,16 +6,21 @@ on:
       - main
 
 jobs:
+
   deploy:
+
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
+
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+
           port: 22
           timeout: 30s
           command_timeout: 20m
@@ -39,13 +44,22 @@ jobs:
             echo "📍 Current directory:"
             pwd
 
+            # =====================================================
+            # Pull latest code
+            # =====================================================
+
             echo "📥 Pulling latest code..."
 
             git fetch origin main
             git reset --hard origin/main
 
             echo "🔍 Current commit:"
+
             git rev-parse --short HEAD
+
+            # =====================================================
+            # Enable maintenance mode
+            # =====================================================
 
             echo "🔒 Enabling maintenance mode..."
 
@@ -55,51 +69,103 @@ jobs:
               --refresh=5 \
               || true
 
+            # =====================================================
+            # Build production image
+            #
+            # Composer dependencies are installed INSIDE the
+            # Docker image during docker build.
+            # =====================================================
+
             echo "🐳 Building application container..."
 
             docker compose build --pull app
+
+            # =====================================================
+            # Start containers
+            # =====================================================
 
             echo "🚀 Starting containers..."
 
             docker compose up -d --remove-orphans
 
+            # =====================================================
+            # Wait for containers
+            # =====================================================
+
             echo "⏳ Waiting for containers..."
 
             sleep 10
 
-            echo "📦 Installing PHP dependencies..."
+            # =====================================================
+            # Verify containers
+            # =====================================================
+
+            echo "📊 Checking container status..."
+
+            docker compose ps
+
+            # =====================================================
+            # Verify Redis PHP extension
+            # =====================================================
+
+            echo "🔍 Checking PHP Redis extension..."
 
             docker compose exec -T app \
-              composer install \
-              --no-dev \
-              --prefer-dist \
-              --optimize-autoloader \
-              --no-interaction \
-              --no-progress \
-              --no-scripts
+              php -r '
+                if (!class_exists("Redis")) {
+                    fwrite(STDERR, "Redis PHP extension is missing\n");
+                    exit(1);
+                }
+
+                echo "Redis PHP extension: OK\n";
+              '
+
+            # =====================================================
+            # Clear Laravel caches
+            # =====================================================
 
             echo "🧹 Clearing Laravel caches..."
 
             docker compose exec -T app \
               php artisan optimize:clear
 
+            # =====================================================
+            # Database migrations
+            # =====================================================
+
             echo "🗄 Running database migrations..."
 
             docker compose exec -T app \
               php artisan migrate --force
+
+            # =====================================================
+            # Database seeders
+            #
+            # IMPORTANT:
+            # Seeders should be idempotent in production.
+            # =====================================================
 
             echo "🌱 Running database seeders..."
 
             docker compose exec -T app \
               php artisan db:seed --force
 
-            echo "🔐 Fixing Laravel permissions..."
+            # =====================================================
+            # Laravel runtime permissions
+            # =====================================================
+
+            echo "🔐 Fixing Laravel runtime permissions..."
 
             docker compose exec -T app sh -c '
+              mkdir -p storage/logs bootstrap/cache &&
               chown -R www-data:www-data storage bootstrap/cache &&
               find storage bootstrap/cache -type d -exec chmod 775 {} \; &&
               find storage bootstrap/cache -type f -exec chmod 664 {} \;
             '
+
+            # =====================================================
+            # Storage symlink
+            # =====================================================
 
             echo "🔗 Checking Laravel storage link..."
 
@@ -111,20 +177,36 @@ jobs:
               fi
             '
 
-            echo "⚡ Rebuilding Laravel configuration cache..."
+            # =====================================================
+            # Production configuration cache
+            # =====================================================
+
+            echo "⚡ Caching Laravel configuration..."
 
             docker compose exec -T app \
               php artisan config:cache
 
-            echo "🔍 Validating routes..."
+            # =====================================================
+            # Production route cache
+            # =====================================================
+
+            echo "🔍 Caching Laravel routes..."
 
             docker compose exec -T app \
               php artisan route:cache
 
-            echo "🖼 Caching views..."
+            # =====================================================
+            # Production view cache
+            # =====================================================
+
+            echo "🖼 Caching Laravel views..."
 
             docker compose exec -T app \
               php artisan view:cache
+
+            # =====================================================
+            # Restart Laravel queue workers
+            # =====================================================
 
             echo "🔄 Restarting queue workers..."
 
@@ -132,23 +214,55 @@ jobs:
               php artisan queue:restart \
               || true
 
+            # =====================================================
+            # Laravel application information
+            # =====================================================
+
             echo "🔍 Checking Laravel application..."
 
             docker compose exec -T app \
               php artisan about
 
-            echo "📊 Container status..."
+            # =====================================================
+            # API health check
+            # =====================================================
 
-            docker compose ps
+            echo "🏥 Checking API health..."
 
-            echo "🧹 Cleaning unused Docker images..."
+            sleep 3
 
-            docker image prune -f
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              http://127.0.0.1/health
+
+            echo ""
+
+            # =====================================================
+            # Disable maintenance mode
+            # =====================================================
 
             echo "🟢 Disabling maintenance mode..."
 
             docker compose exec -T app \
               php artisan up
+
+            # =====================================================
+            # Cleanup unused Docker images
+            # =====================================================
+
+            echo "🧹 Cleaning unused Docker images..."
+
+            docker image prune -f
+
+            # =====================================================
+            # Final status
+            # =====================================================
+
+            echo "📊 Final container status..."
+
+            docker compose ps
 
             echo "======================================"
             echo "✅ Commercial Enforcement API deployment completed"
