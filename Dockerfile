@@ -27,9 +27,8 @@ RUN apt-get update && apt-get install -y \
         calendar \
         intl \
         opcache \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/
+
 
 # =========================================================
 # Composer
@@ -37,14 +36,18 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
+
 # =========================================================
 # Application
 # =========================================================
 
 WORKDIR /var/www
 
+
 # =========================================================
 # Composer dependencies
+# =========================================================
+# Copy dependency files first for Docker layer caching.
 # =========================================================
 
 COPY composer.json composer.lock ./
@@ -57,18 +60,21 @@ RUN composer install \
     --no-progress \
     --no-scripts
 
+
 # =========================================================
 # Application source
 # =========================================================
 
 COPY . .
 
+
 # =========================================================
 # PHP configuration
 # =========================================================
 
 COPY docker/php/custom.ini \
-     /usr/local/etc/php/conf.d/custom.ini
+    /usr/local/etc/php/conf.d/custom.ini
+
 
 # =========================================================
 # Laravel runtime directories
@@ -76,27 +82,33 @@ COPY docker/php/custom.ini \
 
 RUN mkdir -p \
         storage/logs \
+        storage/framework/cache \
+        storage/framework/sessions \
+        storage/framework/views \
         bootstrap/cache \
         /var/www/.config/psysh
+
 
 # =========================================================
 # Runtime permissions
 # =========================================================
+# Laravel runtime directories + application ownership.
+# This prevents www-data permission problems.
+# =========================================================
 
-RUN chown -R www-data:www-data \
-        storage \
-        bootstrap/cache \
-        /var/www/.config \
+RUN chown -R www-data:www-data /var/www \
     && chmod -R 775 \
         storage \
         bootstrap/cache \
         /var/www/.config
+
 
 # =========================================================
 # Laravel package discovery
 # =========================================================
 
 RUN php artisan package:discover --ansi || true
+
 
 # =========================================================
 # PHP-FPM
