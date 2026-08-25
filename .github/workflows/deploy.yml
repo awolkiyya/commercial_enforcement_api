@@ -1,174 +1,150 @@
-name: Deploy Laravel API
+name: Deploy Commercial Enforcement API
 
 on:
   push:
     branches:
       - main
 
-
 jobs:
-
   deploy:
-
     runs-on: ubuntu-latest
 
-
     steps:
-
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
-
         with:
-
           host: ${{ secrets.SSH_HOST }}
-
           username: ${{ secrets.SSH_USER }}
-
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-
+          port: 22
+          timeout: 30s
+          command_timeout: 20m
+          script_stop: true
 
           script: |
 
-            set -e
-
+            set -Eeuo pipefail
 
             echo "======================================"
-            echo "🚀 Starting Commercial Enforcement API Deployment"
+            echo "🚀 Commercial Enforcement API Deployment"
             echo "======================================"
 
+            APP_DIR="/home/tradmin/api/commercial_enforcement_api"
 
-            cd /home/apiadmin/api/commercial_enforcement_api
+            echo "📂 Application directory:"
+            echo "$APP_DIR"
 
+            cd "$APP_DIR"
 
+            echo "📍 Current directory:"
+            pwd
 
-            echo "📥 Pulling latest code"
+            echo "📥 Pulling latest code..."
 
             git fetch origin main
             git reset --hard origin/main
 
+            echo "🔍 Current commit:"
+            git rev-parse --short HEAD
 
-
-            echo "🔒 Enabling maintenance mode"
+            echo "🔒 Enabling maintenance mode..."
 
             docker compose exec -T app \
-            php artisan down || true
+              php artisan down \
+              --retry=10 \
+              --refresh=5 \
+              || true
 
+            echo "🐳 Building application container..."
 
+            docker compose build --pull app
 
-            echo "🐳 Building application container"
-
-            docker compose build app
-
-
-
-            echo "🚀 Starting containers"
+            echo "🚀 Starting containers..."
 
             docker compose up -d --remove-orphans
 
+            echo "⏳ Waiting for containers..."
 
+            sleep 10
 
-            echo "📦 Installing PHP dependencies"
-
-            docker compose exec -T app \
-            composer install \
-            --no-dev \
-            --optimize-autoloader \
-            --no-interaction \
-            --no-scripts
-
-
-
-            echo "🗄 Running database migrations"
+            echo "📦 Installing PHP dependencies..."
 
             docker compose exec -T app \
-            php artisan migrate --force
+              composer install \
+              --no-dev \
+              --prefer-dist \
+              --optimize-autoloader \
+              --no-interaction \
+              --no-progress \
+              --no-scripts
 
-
-
-            echo "🌱 Running database seeders"
+            echo "🧹 Clearing Laravel caches..."
 
             docker compose exec -T app \
-            php artisan db:seed \
-            --force
+              php artisan optimize:clear
 
+            echo "🗄 Running database migrations..."
 
+            docker compose exec -T app \
+              php artisan migrate --force
 
-            echo "🔐 Fixing Laravel permissions"
+            echo "🔐 Fixing Laravel permissions..."
 
-            docker compose exec -T app sh -c "
+            docker compose exec -T app sh -c '
               chown -R www-data:www-data storage bootstrap/cache &&
-              chmod -R 775 storage bootstrap/cache
-            "
+              find storage bootstrap/cache -type d -exec chmod 775 {} \; &&
+              find storage bootstrap/cache -type f -exec chmod 664 {} \;
+            '
 
+            echo "🔗 Checking Laravel storage link..."
 
-
-            echo "🔗 Checking Laravel storage link"
-
-            docker compose exec -T app sh -c "
+            docker compose exec -T app sh -c '
               if [ ! -L public/storage ]; then
                 php artisan storage:link
               else
-                echo 'Storage link already exists'
+                echo "Storage link already exists"
               fi
-            "
+            '
 
-
-
-            echo "⚡ Clearing Laravel cache"
+            echo "⚡ Rebuilding Laravel caches..."
 
             docker compose exec -T app \
-            php artisan optimize:clear
+              php artisan config:cache
 
-
-
-            echo "⚡ Rebuilding Laravel cache"
+            echo "🔍 Validating routes..."
 
             docker compose exec -T app \
-            php artisan config:cache
+              php artisan route:cache
 
-
-            docker compose exec -T app \
-            php artisan route:cache
-
+            echo "🖼 Caching views..."
 
             docker compose exec -T app \
-            php artisan view:cache
+              php artisan view:cache
 
-
-
-            echo "🔄 Restarting queue workers"
+            echo "🔄 Restarting queue workers..."
 
             docker compose exec -T app \
-            php artisan queue:restart || true
+              php artisan queue:restart \
+              || true
 
-
-
-            echo "🔍 Checking application health"
-
-            docker compose exec -T app \
-            php artisan about
-
-
-
-            echo "🧹 Cleaning unused Docker resources"
-
-            docker image prune -f
-
-
-
-            echo "🟢 Disabling maintenance mode"
+            echo "🔍 Checking Laravel application..."
 
             docker compose exec -T app \
-            php artisan up
+              php artisan about
 
-
-
-            echo "📊 Container status"
+            echo "📊 Container status..."
 
             docker compose ps
 
+            echo "🧹 Cleaning unused Docker images..."
 
+            docker image prune -f
+
+            echo "🟢 Disabling maintenance mode..."
+
+            docker compose exec -T app \
+              php artisan up
 
             echo "======================================"
-            echo "✅ Commercial Enforcement API deployment completed successfully"
+            echo "✅ Commercial Enforcement API deployment completed"
             echo "======================================"
