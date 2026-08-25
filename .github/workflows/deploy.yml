@@ -41,6 +41,7 @@ jobs:
             echo "📂 Application directory:"
             pwd
 
+
             # =====================================================
             # Pull latest code
             # =====================================================
@@ -51,24 +52,12 @@ jobs:
             git reset --hard origin/main
 
             echo "🔍 Current commit:"
+
             git rev-parse --short HEAD
 
-            # =====================================================
-            # Ensure containers are running
-            # =====================================================
-
-            echo "🚀 Starting required containers..."
-
-            docker compose up -d --remove-orphans
-
-            echo "⏳ Waiting for containers..."
-
-            sleep 10
-
-            docker compose ps
 
             # =====================================================
-            # Enable maintenance mode
+            # Enable maintenance mode if old app exists
             # =====================================================
 
             echo "🔒 Enabling maintenance mode..."
@@ -77,28 +66,54 @@ jobs:
               php artisan down \
               --retry=10 \
               --refresh=5 \
+              2>/dev/null \
               || true
 
+
             # =====================================================
-            # Build production image
+            # Stop application containers
             #
-            # Composer dependencies are installed during
-            # Docker image build.
+            # IMPORTANT:
+            # This does NOT remove PostgreSQL data.
+            # Docker volumes remain untouched.
             # =====================================================
 
-            echo "🐳 Building production application image..."
+            echo "🛑 Stopping existing containers..."
 
-            docker compose build --pull app worker scheduler
+            docker compose down --remove-orphans
+
 
             # =====================================================
-            # Recreate application containers
+            # Build completely fresh application images
+            #
+            # --pull = get latest base images
+            # --no-cache = do not reuse old Docker build layers
             # =====================================================
 
-            echo "🚀 Recreating application containers..."
+            echo "🐳 Building fresh production images..."
 
-            docker compose up -d --force-recreate --remove-orphans
+            docker compose build \
+              --pull \
+              --no-cache \
+              app \
+              worker \
+              scheduler
 
-            echo "⏳ Waiting for application..."
+
+            # =====================================================
+            # Start fresh containers
+            # =====================================================
+
+            echo "🚀 Starting fresh containers..."
+
+            docker compose up -d --remove-orphans
+
+
+            # =====================================================
+            # Wait for PostgreSQL / application
+            # =====================================================
+
+            echo "⏳ Waiting for containers..."
 
             sleep 10
 
@@ -106,8 +121,9 @@ jobs:
 
             docker compose ps
 
+
             # =====================================================
-            # PHP / Laravel verification
+            # Verify application container
             # =====================================================
 
             echo "🐘 Checking PHP..."
@@ -115,10 +131,12 @@ jobs:
             docker compose exec -T app \
               php --version
 
+
             echo "🔍 Checking Laravel..."
 
             docker compose exec -T app \
               php artisan about
+
 
             # =====================================================
             # Clear Laravel caches
@@ -129,6 +147,7 @@ jobs:
             docker compose exec -T app \
               php artisan optimize:clear
 
+
             # =====================================================
             # Database migrations
             # =====================================================
@@ -138,8 +157,12 @@ jobs:
             docker compose exec -T app \
               php artisan migrate --force
 
+
             # =====================================================
             # Database seeders
+            #
+            # IMPORTANT:
+            # All production seeders must be idempotent.
             # =====================================================
 
             echo "🌱 Running database seeders..."
@@ -147,13 +170,15 @@ jobs:
             docker compose exec -T app \
               php artisan db:seed --force
 
+
             # =====================================================
-            # Laravel runtime directories / permissions
+            # Laravel runtime directories
             # =====================================================
 
             echo "🔐 Fixing Laravel runtime permissions..."
 
             docker compose exec -T app sh -c '
+
               mkdir -p \
                 storage/logs \
                 storage/framework/cache \
@@ -167,14 +192,17 @@ jobs:
                 bootstrap/cache \
                 /var/www/.config
 
-              find storage bootstrap/cache -type d \
+              find storage bootstrap/cache \
+                -type d \
                 -exec chmod 775 {} \;
 
-              find storage bootstrap/cache -type f \
+              find storage bootstrap/cache \
+                -type f \
                 -exec chmod 664 {} \;
 
               chmod -R 775 /var/www/.config
             '
+
 
             # =====================================================
             # Storage symlink
@@ -183,15 +211,23 @@ jobs:
             echo "🔗 Checking Laravel storage link..."
 
             docker compose exec -T app sh -c '
+
               if [ ! -L public/storage ]; then
+
                 php artisan storage:link
+
               else
+
                 echo "Storage link already exists"
+
               fi
             '
 
+
             # =====================================================
-            # Verify routes BEFORE route caching
+            # Validate routes
+            #
+            # Do this BEFORE route:cache.
             # =====================================================
 
             echo "🔍 Validating Laravel routes..."
@@ -199,8 +235,9 @@ jobs:
             docker compose exec -T app \
               php artisan route:list
 
+
             # =====================================================
-            # Production configuration cache
+            # Cache Laravel configuration
             # =====================================================
 
             echo "⚡ Caching Laravel configuration..."
@@ -208,8 +245,9 @@ jobs:
             docker compose exec -T app \
               php artisan config:cache
 
+
             # =====================================================
-            # Production route cache
+            # Cache Laravel routes
             # =====================================================
 
             echo "🔍 Caching Laravel routes..."
@@ -217,8 +255,9 @@ jobs:
             docker compose exec -T app \
               php artisan route:cache
 
+
             # =====================================================
-            # Production view cache
+            # Cache Laravel views
             # =====================================================
 
             echo "🖼 Caching Laravel views..."
@@ -226,8 +265,9 @@ jobs:
             docker compose exec -T app \
               php artisan view:cache
 
+
             # =====================================================
-            # Queue workers
+            # Restart queue workers
             # =====================================================
 
             echo "🔄 Restarting Laravel queue workers..."
@@ -236,14 +276,16 @@ jobs:
               php artisan queue:restart \
               || true
 
+
             # =====================================================
-            # Final Laravel validation
+            # Final application validation
             # =====================================================
 
             echo "🔍 Final Laravel application check..."
 
             docker compose exec -T app \
               php artisan about
+
 
             # =====================================================
             # Disable maintenance mode
@@ -253,6 +295,7 @@ jobs:
 
             docker compose exec -T app \
               php artisan up
+
 
             # =====================================================
             # API health check
@@ -270,6 +313,7 @@ jobs:
 
             echo ""
 
+
             # =====================================================
             # Docker cleanup
             # =====================================================
@@ -277,6 +321,7 @@ jobs:
             echo "🧹 Cleaning unused Docker images..."
 
             docker image prune -f
+
 
             # =====================================================
             # Final status
