@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Modules\Inspection\Controllers\InspectionController;
-use App\Modules\Enforcement\Controllers\ViolationController;
+// use App\Modules\Enforcement\Controllers\ViolationController;
 
 Route::prefix('enforcement')->group(function () {
 
@@ -11,6 +11,6 @@ Route::prefix('enforcement')->group(function () {
     Route::post('/inspections', [InspectionController::class, 'store']);
 
     // Violations
-    Route::get('/violations', [ViolationController::class, 'index']);
-    Route::post('/violations', [ViolationController::class, 'store']);
+    // Route::get('/violations', [ViolationController::class, 'index']);
+    // Route::post('/violations', [ViolationController::class, 'store']);
 });
