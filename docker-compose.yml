@@ -16,22 +16,6 @@ services:
     volumes:
       - storage:/var/www/storage
 
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "php",
-          "artisan",
-          "--version"
-        ]
-
-      interval: 30s
-
-      timeout: 10s
-
-      retries: 3
-
-
     depends_on:
 
       postgres:
@@ -39,7 +23,6 @@ services:
 
       redis:
         condition: service_healthy
-
 
     networks:
       - backend
@@ -51,18 +34,14 @@ services:
 
     image: nginx:alpine
 
-
     container_name: laravel-nginx
 
-
     restart: unless-stopped
-
 
 
     ports:
 
       - "80:80"
-
 
 
     volumes:
@@ -72,12 +51,9 @@ services:
       - storage:/var/www/storage
 
 
-
     depends_on:
 
-      app:
-        condition: service_healthy
-
+      - app
 
 
     networks:
@@ -93,12 +69,9 @@ services:
 
     image: postgres:16-alpine
 
-
     container_name: postgres-db
 
-
     restart: unless-stopped
-
 
 
     environment:
@@ -110,11 +83,9 @@ services:
       POSTGRES_PASSWORD: apppass
 
 
-
     volumes:
 
       - postgres_data:/var/lib/postgresql/data
-
 
 
     healthcheck:
@@ -132,11 +103,9 @@ services:
       retries: 5
 
 
-
     networks:
 
       - backend
-
 
 
 
@@ -146,12 +115,9 @@ services:
 
     image: redis:7-alpine
 
-
     container_name: redis-cache
 
-
     restart: unless-stopped
-
 
 
     command:
@@ -159,11 +125,9 @@ services:
       redis-server --appendonly yes
 
 
-
     volumes:
 
       - redis_data:/data
-
 
 
     healthcheck:
@@ -182,7 +146,6 @@ services:
       retries: 5
 
 
-
     networks:
 
       - backend
@@ -199,17 +162,12 @@ services:
       context: .
 
 
-
     container_name: laravel-worker
-
-
 
     restart: unless-stopped
 
 
-
     working_dir: /var/www
-
 
 
     env_file:
@@ -217,11 +175,9 @@ services:
       - .env.production
 
 
-
     volumes:
 
       - storage:/var/www/storage
-
 
 
     command:
@@ -229,23 +185,13 @@ services:
       php artisan queue:work --sleep=3 --tries=3 --timeout=90
 
 
-
     depends_on:
 
+      - app
 
-      app:
-        condition: service_healthy
+      - redis
 
-
-      redis:
-
-        condition: service_healthy
-
-
-      postgres:
-
-        condition: service_healthy
-
+      - postgres
 
 
     networks:
@@ -264,17 +210,13 @@ services:
       context: .
 
 
-
     container_name: laravel-scheduler
-
 
 
     restart: unless-stopped
 
 
-
     working_dir: /var/www
-
 
 
     env_file:
@@ -282,11 +224,9 @@ services:
       - .env.production
 
 
-
     volumes:
 
       - storage:/var/www/storage
-
 
 
     command:
@@ -298,23 +238,13 @@ services:
       done"
 
 
-
     depends_on:
 
+      - app
 
-      app:
-        condition: service_healthy
+      - redis
 
-
-      postgres:
-
-        condition: service_healthy
-
-
-      redis:
-
-        condition: service_healthy
-
+      - postgres
 
 
     networks:
@@ -330,20 +260,14 @@ services:
 
     image: dpage/pgadmin4
 
-
-
     container_name: pgadmin
 
-
-
     restart: unless-stopped
-
 
 
     ports:
 
       - "127.0.0.1:8081:80"
-
 
 
     environment:
@@ -353,19 +277,14 @@ services:
       PGADMIN_DEFAULT_PASSWORD: admin123
 
 
-
     depends_on:
 
-      postgres:
-
-        condition: service_healthy
-
+      - postgres
 
 
     volumes:
 
       - pgadmin_data:/var/lib/pgadmin
-
 
 
     networks:
@@ -391,9 +310,7 @@ volumes:
 
 
 
-
 networks:
 
   backend:
-
     driver: bridge
