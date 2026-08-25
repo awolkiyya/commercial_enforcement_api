@@ -71,12 +71,13 @@ COPY docker/php/custom.ini \
      /usr/local/etc/php/conf.d/custom.ini
 
 # =========================================================
-# Laravel directories
+# Laravel runtime directories
 # =========================================================
 
 RUN mkdir -p \
         storage/logs \
-        bootstrap/cache
+        bootstrap/cache \
+        /var/www/.config/psysh
 
 # =========================================================
 # Runtime permissions
@@ -85,9 +86,11 @@ RUN mkdir -p \
 RUN chown -R www-data:www-data \
         storage \
         bootstrap/cache \
+        /var/www/.config \
     && chmod -R 775 \
         storage \
-        bootstrap/cache
+        bootstrap/cache \
+        /var/www/.config
 
 # =========================================================
 # Laravel package discovery
