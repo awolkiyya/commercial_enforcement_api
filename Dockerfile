@@ -1,9 +1,9 @@
 FROM php:8.3-fpm
 
-
-# =========================
+# =========================================================
 # System dependencies
-# =========================
+# =========================================================
+
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -27,73 +27,80 @@ RUN apt-get update && apt-get install -y \
         calendar \
         intl \
         opcache \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
     && rm -rf /var/lib/apt/lists/*
 
-
-
-# =========================
+# =========================================================
 # Composer
-# =========================
+# =========================================================
+
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-
+# =========================================================
+# Application directory
+# =========================================================
 
 WORKDIR /var/www
 
+# =========================================================
+# Composer dependency cache
+# =========================================================
 
-
-# =========================
-# Dependencies cache
-# =========================
 COPY composer.json composer.lock ./
-
 
 RUN composer install \
     --no-dev \
+    --prefer-dist \
     --optimize-autoloader \
     --no-interaction \
+    --no-progress \
     --no-scripts
 
+# =========================================================
+# Application source
+# =========================================================
 
-
-# =========================
-# Application
-# =========================
 COPY . .
 
+# =========================================================
+# PHP production configuration
+# =========================================================
 
-
-# =========================
-# PHP configuration
-# =========================
 COPY docker/php/custom.ini \
      /usr/local/etc/php/conf.d/custom.ini
 
+# =========================================================
+# Laravel required directories
+# =========================================================
 
+RUN mkdir -p \
+        storage/logs \
+        bootstrap/cache
 
-# =========================
-# Laravel optimization
-# =========================
+# =========================================================
+# Permissions
+# =========================================================
+
+RUN chown -R www-data:www-data \
+        storage \
+        bootstrap/cache \
+    && chmod -R 775 \
+        storage \
+        bootstrap/cache
+
+# =========================================================
+# Laravel package discovery
+# =========================================================
+
 RUN php artisan package:discover --ansi || true
 
-
-
-# =========================
-# Laravel permissions
-# =========================
-RUN mkdir -p storage/logs bootstrap/cache \
-    && chown -R www-data:www-data /var/www \
-    && chmod -R 775 storage bootstrap/cache
-
-
-
-# =========================
+# =========================================================
 # PHP-FPM
-# =========================
+# =========================================================
+
 EXPOSE 9000
 
-
 USER www-data
-
 
 CMD ["php-fpm"]
