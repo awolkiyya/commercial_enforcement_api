@@ -36,12 +36,9 @@ jobs:
 
             APP_DIR="/home/tradmin/api/commercial_enforcement_api"
 
-            echo "📂 Application directory:"
-            echo "$APP_DIR"
-
             cd "$APP_DIR"
 
-            echo "📍 Current directory:"
+            echo "📂 Application directory:"
             pwd
 
             # =====================================================
@@ -54,8 +51,21 @@ jobs:
             git reset --hard origin/main
 
             echo "🔍 Current commit:"
-
             git rev-parse --short HEAD
+
+            # =====================================================
+            # Ensure containers are running
+            # =====================================================
+
+            echo "🚀 Starting required containers..."
+
+            docker compose up -d --remove-orphans
+
+            echo "⏳ Waiting for containers..."
+
+            sleep 10
+
+            docker compose ps
 
             # =====================================================
             # Enable maintenance mode
@@ -72,53 +82,43 @@ jobs:
             # =====================================================
             # Build production image
             #
-            # Composer dependencies are installed INSIDE the
-            # Docker image during docker build.
+            # Composer dependencies are installed during
+            # Docker image build.
             # =====================================================
 
-            echo "🐳 Building application container..."
+            echo "🐳 Building production application image..."
 
-            docker compose build --pull app
-
-            # =====================================================
-            # Start containers
-            # =====================================================
-
-            echo "🚀 Starting containers..."
-
-            docker compose up -d --remove-orphans
+            docker compose build --pull app worker scheduler
 
             # =====================================================
-            # Wait for containers
+            # Recreate application containers
             # =====================================================
 
-            echo "⏳ Waiting for containers..."
+            echo "🚀 Recreating application containers..."
+
+            docker compose up -d --force-recreate --remove-orphans
+
+            echo "⏳ Waiting for application..."
 
             sleep 10
 
-            # =====================================================
-            # Verify containers
-            # =====================================================
-
-            echo "📊 Checking container status..."
+            echo "📊 Container status..."
 
             docker compose ps
 
             # =====================================================
-            # Verify Redis PHP extension
+            # PHP / Laravel verification
             # =====================================================
 
-            echo "🔍 Checking PHP Redis extension..."
+            echo "🐘 Checking PHP..."
 
             docker compose exec -T app \
-              php -r '
-                if (!class_exists("Redis")) {
-                    fwrite(STDERR, "Redis PHP extension is missing\n");
-                    exit(1);
-                }
+              php --version
 
-                echo "Redis PHP extension: OK\n";
-              '
+            echo "🔍 Checking Laravel..."
+
+            docker compose exec -T app \
+              php artisan about
 
             # =====================================================
             # Clear Laravel caches
@@ -140,9 +140,6 @@ jobs:
 
             # =====================================================
             # Database seeders
-            #
-            # IMPORTANT:
-            # Seeders should be idempotent in production.
             # =====================================================
 
             echo "🌱 Running database seeders..."
@@ -151,16 +148,32 @@ jobs:
               php artisan db:seed --force
 
             # =====================================================
-            # Laravel runtime permissions
+            # Laravel runtime directories / permissions
             # =====================================================
 
             echo "🔐 Fixing Laravel runtime permissions..."
 
             docker compose exec -T app sh -c '
-              mkdir -p storage/logs bootstrap/cache &&
-              chown -R www-data:www-data storage bootstrap/cache &&
-              find storage bootstrap/cache -type d -exec chmod 775 {} \; &&
-              find storage bootstrap/cache -type f -exec chmod 664 {} \;
+              mkdir -p \
+                storage/logs \
+                storage/framework/cache \
+                storage/framework/sessions \
+                storage/framework/views \
+                bootstrap/cache \
+                /var/www/.config/psysh
+
+              chown -R www-data:www-data \
+                storage \
+                bootstrap/cache \
+                /var/www/.config
+
+              find storage bootstrap/cache -type d \
+                -exec chmod 775 {} \;
+
+              find storage bootstrap/cache -type f \
+                -exec chmod 664 {} \;
+
+              chmod -R 775 /var/www/.config
             '
 
             # =====================================================
@@ -176,6 +189,15 @@ jobs:
                 echo "Storage link already exists"
               fi
             '
+
+            # =====================================================
+            # Verify routes BEFORE route caching
+            # =====================================================
+
+            echo "🔍 Validating Laravel routes..."
+
+            docker compose exec -T app \
+              php artisan route:list
 
             # =====================================================
             # Production configuration cache
@@ -205,23 +227,32 @@ jobs:
               php artisan view:cache
 
             # =====================================================
-            # Restart Laravel queue workers
+            # Queue workers
             # =====================================================
 
-            echo "🔄 Restarting queue workers..."
+            echo "🔄 Restarting Laravel queue workers..."
 
             docker compose exec -T app \
               php artisan queue:restart \
               || true
 
             # =====================================================
-            # Laravel application information
+            # Final Laravel validation
             # =====================================================
 
-            echo "🔍 Checking Laravel application..."
+            echo "🔍 Final Laravel application check..."
 
             docker compose exec -T app \
               php artisan about
+
+            # =====================================================
+            # Disable maintenance mode
+            # =====================================================
+
+            echo "🟢 Disabling maintenance mode..."
+
+            docker compose exec -T app \
+              php artisan up
 
             # =====================================================
             # API health check
@@ -240,16 +271,7 @@ jobs:
             echo ""
 
             # =====================================================
-            # Disable maintenance mode
-            # =====================================================
-
-            echo "🟢 Disabling maintenance mode..."
-
-            docker compose exec -T app \
-              php artisan up
-
-            # =====================================================
-            # Cleanup unused Docker images
+            # Docker cleanup
             # =====================================================
 
             echo "🧹 Cleaning unused Docker images..."
