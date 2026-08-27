@@ -8,112 +8,265 @@ use Illuminate\Support\Facades\Log;
 use App\Models\Inspection;
 use App\Models\PenaltyType;
 use App\Modules\Inspection\Services\PenaltyEscalationService;
+use App\Support\ApiResponse;
 
 class EscalationController extends Controller
 {
-    public function escalate(Request $request, $id)
-    {
-        Log::info('ESCALATION_REQUEST_RECEIVED', [
-            'inspection_id' => $id,
-            'user_id' => auth()->id(),
-            'payload' => $request->all(),
-        ]);
+    /**
+     * ESCALATE INSPECTION PENALTY
+     *
+     * SECURITY:
+     * - Requires authenticated user.
+     * - Requires policy authorization.
+     * - Requires valid penalty escalation hierarchy.
+     * - Business logic remains inside the service.
+     */
+    public function escalate(
+        Request $request,
+        string $id
+    ) {
+        try {
+            $user = auth()->user();
 
-        $validated = $request->validate([
-            'penalty_type_id' => 'required|exists:penalty_types,id',
-            'reason' => 'required|string|min:20',
-            'new_due_date' => 'required|date|after_or_equal:today',
-        ]);
+            if (!$user) {
+                return ApiResponse::error(
+                    'Authentication required.',
+                    [],
+                    401
+                );
+            }
 
-        Log::info('ESCALATION_VALIDATED', [
-            'inspection_id' => $id,
-            'validated' => $validated,
-        ]);
-
-        $inspection = Inspection::with(['penalty.penaltyType'])
-            ->findOrFail($id);
-
-        $newPenaltyType = PenaltyType::findOrFail($validated['penalty_type_id']);
-
-        $currentPenalty = $inspection->penalty?->penaltyType;
-
-        /*
-        |------------------------------------------------------
-        | RANK VALIDATION (FIXED)
-        |------------------------------------------------------
-        | IMPORTANT: we use `category`, NOT `name`
-        */
-        if ($currentPenalty) {
-
-            $rank = config('penalty.rank');
-
-            $currentRank = $rank[$currentPenalty->category] ?? 0;
-            $newRank = $rank[$newPenaltyType->category] ?? 0;
-
-            Log::info('ESCALATION_RANK_CHECK', [
-                'current_penalty_category' => $currentPenalty->category,
-                'new_penalty_category' => $newPenaltyType->category,
-                'current_rank' => $currentRank,
-                'new_rank' => $newRank,
+            Log::info('ESCALATION_REQUEST_RECEIVED', [
+                'inspection_id' => $id,
+                'user_id'       => $user->id,
+                'user_roles'    => $user->getRoleNames(),
             ]);
 
-            if ($newRank <= $currentRank) {
+            /*
+            |--------------------------------------------------------------------------
+            | LOAD INSPECTION
+            |--------------------------------------------------------------------------
+            */
 
-                Log::warning('ESCALATION_BLOCKED_INVALID_RANK', [
-                    'inspection_id' => $id,
-                    'current_rank' => $currentRank,
-                    'new_rank' => $newRank,
-                    'reason' => 'new penalty rank is not higher',
+            $inspection = Inspection::with([
+                'penalty.penaltyType',
+            ])->findOrFail($id);
+
+            /*
+            |--------------------------------------------------------------------------
+            | SERVER-SIDE AUTHORIZATION
+            |--------------------------------------------------------------------------
+            |
+            | This is the critical protection.
+            |
+            | The frontend must NOT be trusted to determine whether
+            | escalation is allowed.
+            |
+            |--------------------------------------------------------------------------
+            */
+
+            $this->authorize(
+                'escalate',
+                $inspection
+            );
+
+            /*
+            |--------------------------------------------------------------------------
+            | VALIDATION
+            |--------------------------------------------------------------------------
+            */
+
+            $validated = $request->validate([
+                'penalty_type_id' => [
+                    'required',
+                    'exists:penalty_types,id',
+                ],
+
+                'reason' => [
+                    'required',
+                    'string',
+                    'min:20',
+                    'max:2000',
+                ],
+
+                'new_due_date' => [
+                    'required',
+                    'date',
+                    'after_or_equal:today',
+                ],
+            ]);
+
+            Log::info('ESCALATION_VALIDATED', [
+                'inspection_id' => $inspection->id,
+                'user_id'       => $user->id,
+                'validated'     => $validated,
+            ]);
+
+            /*
+            |--------------------------------------------------------------------------
+            | LOAD NEW PENALTY TYPE
+            |--------------------------------------------------------------------------
+            */
+
+            $newPenaltyType = PenaltyType::findOrFail(
+                $validated['penalty_type_id']
+            );
+
+            $currentPenalty = $inspection
+                ->penalty
+                ?->penaltyType;
+
+            /*
+            |--------------------------------------------------------------------------
+            | PENALTY ESCALATION RANK
+            |--------------------------------------------------------------------------
+            */
+
+            if ($currentPenalty) {
+
+                $rank = config('penalty.rank', []);
+
+                $currentCategory = strtoupper(
+                    trim((string) $currentPenalty->category)
+                );
+
+                $newCategory = strtoupper(
+                    trim((string) $newPenaltyType->category)
+                );
+
+                $currentRank = $rank[$currentCategory] ?? 0;
+                $newRank     = $rank[$newCategory] ?? 0;
+
+                Log::info('ESCALATION_RANK_CHECK', [
+                    'inspection_id'           => $inspection->id,
+                    'current_penalty_category' => $currentCategory,
+                    'new_penalty_category'     => $newCategory,
+                    'current_rank'             => $currentRank,
+                    'new_rank'                 => $newRank,
                 ]);
 
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid escalation: new penalty must be higher severity than current penalty',
-                ], 422);
-            }
-        }
+                /*
+                |--------------------------------------------------------------------------
+                | FAIL CLOSED
+                |--------------------------------------------------------------------------
+                |
+                | Unknown categories should NOT be treated as valid
+                | escalation levels.
+                |
+                |--------------------------------------------------------------------------
+                */
 
-        try {
+                if ($currentRank <= 0 || $newRank <= 0) {
+
+                    Log::warning(
+                        'ESCALATION_BLOCKED_UNKNOWN_RANK',
+                        [
+                            'inspection_id' => $inspection->id,
+                            'current_category' => $currentCategory,
+                            'new_category' => $newCategory,
+                        ]
+                    );
+
+                    return ApiResponse::error(
+                        'Invalid penalty escalation level.',
+                        [],
+                        422
+                    );
+                }
+
+                /*
+                |--------------------------------------------------------------------------
+                | NEW PENALTY MUST BE STRICTLY HIGHER
+                |--------------------------------------------------------------------------
+                */
+
+                if ($newRank <= $currentRank) {
+
+                    Log::warning(
+                        'ESCALATION_BLOCKED_INVALID_RANK',
+                        [
+                            'inspection_id' => $inspection->id,
+                            'user_id' => $user->id,
+                            'current_rank' => $currentRank,
+                            'new_rank' => $newRank,
+                        ]
+                    );
+
+                    return ApiResponse::error(
+                        'Invalid escalation: new penalty must be higher severity than current penalty.',
+                        [],
+                        422
+                    );
+                }
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | EXECUTE ESCALATION
+            |--------------------------------------------------------------------------
+            */
 
             Log::info('ESCALATION_SERVICE_START', [
-                'inspection_id' => $id,
-                'user_id' => auth()->id(),
+                'inspection_id' => $inspection->id,
+                'user_id'       => $user->id,
             ]);
 
-            $result = app(PenaltyEscalationService::class)->escalate(
+            $result = app(
+                PenaltyEscalationService::class
+            )->escalate(
                 inspection: $inspection,
                 newPenaltyType: $newPenaltyType,
                 reason: $validated['reason'],
                 newDueDate: $validated['new_due_date'],
-                userId: auth()->id()
+                userId: $user->id
             );
 
             Log::info('ESCALATION_SUCCESS', [
-                'inspection_id' => $id,
+                'inspection_id' => $inspection->id,
                 'new_penalty_id' => $result->id ?? null,
-                'user_id' => auth()->id(),
+                'user_id'       => $user->id,
             ]);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Penalty escalated successfully',
-                'data' => $result,
+            return ApiResponse::success(
+                $result,
+                'Penalty escalated successfully'
+            );
+
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+
+            Log::warning('ESCALATION_UNAUTHORIZED', [
+                'inspection_id' => $id,
+                'user_id'       => auth()->id(),
             ]);
+
+            return ApiResponse::error(
+                'You are not authorized to escalate this inspection.',
+                [],
+                403
+            );
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+
+            return ApiResponse::error(
+                'Inspection not found.',
+                [],
+                404
+            );
 
         } catch (\Throwable $e) {
 
             Log::error('ESCALATION_FAILED', [
                 'inspection_id' => $id,
-                'user_id' => auth()->id(),
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+                'user_id'       => auth()->id(),
+                'error'         => $e->getMessage(),
+                'trace'         => $e->getTraceAsString(),
             ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Escalation failed',
-                'error' => $e->getMessage(),
-            ], 500);
+            return ApiResponse::error(
+                'Escalation failed.',
+                [],
+                500
+            );
         }
     }
 }

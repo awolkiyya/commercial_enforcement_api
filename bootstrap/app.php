@@ -20,6 +20,33 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\HandleCors::class,
         ]);
 
+
+        /*
+        |--------------------------------------------------------------------------
+        | Sanctum Stateful API
+        |--------------------------------------------------------------------------
+        |
+        | Required for cookie/session-based SPA authentication.
+        |
+        */
+
+        $middleware->statefulApi();
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Cookie Encryption
+        |--------------------------------------------------------------------------
+        |
+        | The role cookie is intentionally readable by Next.js middleware.
+        | It is NOT used for backend authorization.
+        |
+        */
+
+        $middleware->encryptCookies(except: [
+            'role',
+        ]);
+
         // Register custom middleware aliases
         // $middleware->alias([
         //     'api.auth' => \App\Http\Middleware\ApiAuthenticate::class,

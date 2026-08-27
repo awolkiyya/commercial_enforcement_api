@@ -8,12 +8,32 @@ use Spatie\Permission\PermissionRegistrar;
 
 class PermissionSeeder extends Seeder
 {
+    /**
+     * Seed the application's API permissions.
+     *
+     * IMPORTANT:
+     * This seeder defines WHAT actions exist in the system.
+     * It does NOT define which roles may create/assign other roles.
+     *
+     * Role-assignment hierarchy must be enforced server-side
+     * in the user management authorization layer.
+     */
     public function run(): void
     {
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
-
         $guard = 'api';
 
+        /*
+        |--------------------------------------------------------------------------
+        | Clear Spatie permission cache
+        |--------------------------------------------------------------------------
+        */
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Application Permissions
+        |--------------------------------------------------------------------------
+        */
         $permissions = [
 
             /*
@@ -41,30 +61,30 @@ class PermissionSeeder extends Seeder
 
             /*
             =========================================================
-            INSPECTIONS (FIELD OPERATIONS)
+            INSPECTIONS
             =========================================================
             */
             'inspections.view',
-            'inspections.create',        // Inspector creates field inspection
+            'inspections.create',
             'inspections.update',
-            'inspections.submit',       // Final submission after field work
+            'inspections.submit',
             'inspections.assign',
 
             /*
             =========================================================
-            VIOLATIONS (CORE ENFORCEMENT LOGIC)
+            VIOLATIONS
             =========================================================
             */
             'violations.view',
-            'violations.create',        // Inspector detects illegal activity
+            'violations.create',
             'violations.update',
-            'violations.approve',       // Supervisor/Admin approval
+            'violations.approve',
             'violations.reject',
             'violations.close',
 
             /*
             =========================================================
-            ENFORCEMENT ACTIONS (REAL WORLD POWER)
+            ENFORCEMENT ACTIONS
             =========================================================
             */
             'enforcement.view',
@@ -75,7 +95,7 @@ class PermissionSeeder extends Seeder
 
             /*
             =========================================================
-            CASE MANAGEMENT (FULL FLOW CONTROL)
+            CASE MANAGEMENT
             =========================================================
             */
             'cases.view',
@@ -106,14 +126,25 @@ class PermissionSeeder extends Seeder
             'permissions.manage',
             'system.settings',
             'audit.logs.view',
-
         ];
 
+        /*
+        |--------------------------------------------------------------------------
+        | Create permissions if they do not already exist
+        |--------------------------------------------------------------------------
+        */
         foreach ($permissions as $permission) {
             Permission::firstOrCreate([
-                'name' => $permission,
+                'name'       => $permission,
                 'guard_name' => $guard,
             ]);
         }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Clear cache after changes
+        |--------------------------------------------------------------------------
+        */
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 }

@@ -4,6 +4,9 @@ namespace App\Modules\Business\Controllers;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
+
+use App\Models\Business;
 
 use App\Support\ApiResponse;
 use App\Support\PaginatesResponse;
@@ -15,145 +18,350 @@ use App\Modules\Business\Requests\StoreBusinessRequest;
 use App\Modules\Business\Requests\UpdateBusinessRequest;
 
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use App\Queries\BusinessQuery;
-
-
+use Throwable;
 
 class BusinessController extends Controller
 {
-    use PaginatesResponse;
+    use AuthorizesRequests, PaginatesResponse;
 
     public function __construct(
         protected BusinessService $service
     ) {}
 
-   // =========================
-    // LIST
-    // =========================
+    /*
+    |--------------------------------------------------------------------------
+    | LIST BUSINESSES
+    |--------------------------------------------------------------------------
+    |
+    | Policy controls whether the actor can list businesses.
+    | Service/query controls the geographic/data scope.
+    |
+    |--------------------------------------------------------------------------
+    */
+
     public function index(Request $request)
-{
-    try {
-        $query = $this->service->list($request);
+    {
+        try {
 
-        $paginator = $query->paginate(
-            $request->get('per_page', 15)
-        );
+            $this->authorize('viewAny', Business::class);
 
-        return ApiResponse::success(
-            BusinessResource::collection($paginator),
-            'Businesses retrieved successfully',
-            [
-                'current_page' => $paginator->currentPage(),
-                'per_page'     => $paginator->perPage(),
-                'total'        => $paginator->total(),
-                'last_page'    => $paginator->lastPage(),
-            ]
-        );
+            $query = $this->service->list($request);
 
-    } catch (\Throwable $e) {
-        return ApiResponse::error(
-            $e->getMessage(),
-            [],
-            500
-        );
+            $perPage = min(
+                max((int) $request->get('per_page', 15), 1),
+                100
+            );
+
+            $paginator = $query->paginate($perPage);
+
+            return ApiResponse::success(
+                BusinessResource::collection($paginator),
+                'Businesses retrieved successfully',
+                [
+                    'current_page' => $paginator->currentPage(),
+                    'per_page'     => $paginator->perPage(),
+                    'total'        => $paginator->total(),
+                    'last_page'    => $paginator->lastPage(),
+                ]
+            );
+
+        } catch (Throwable $e) {
+
+            report($e);
+
+            return ApiResponse::error(
+                'Failed to load businesses',
+                [],
+                500
+            );
+        }
     }
-}
+
+    /*
+    |--------------------------------------------------------------------------
+    | SCOPED LIST
+    |--------------------------------------------------------------------------
+    */
 
     public function scopedIndex(Request $request)
     {
         try {
+
+            $this->authorize('viewAny', Business::class);
+
             $query = $this->service->scopedList($request);
-    
+
             return $this->paginateResponse(
                 $query,
                 BusinessResource::class
             );
-    
-        } catch (\Throwable $e) {
+
+        } catch (Throwable $e) {
+
             report($e);
-    
-            return ApiResponse::error('Failed to load scoped businesses');
+
+            return ApiResponse::error(
+                'Failed to load businesses',
+                [],
+                500
+            );
         }
     }
 
-    // =========================
-    // SHOW
-    // =========================
+    /*
+    |--------------------------------------------------------------------------
+    | SHOW
+    |--------------------------------------------------------------------------
+    */
+
     public function show($id)
-{
-    try {
-        $business = $this->service->find($id);
+    {
+        try {
 
-        return ApiResponse::success(
-            new BusinessResource($business)
-        );
+            $business = $this->service->find($id);
 
-    } catch (ModelNotFoundException $e) {
-        return ApiResponse::notFound('Business not found');
+            /*
+            |--------------------------------------------------------------------------
+            | Object-level authorization
+            |--------------------------------------------------------------------------
+            |
+            | Important:
+            | Policy must determine whether THIS business may be viewed.
+            |
+            |--------------------------------------------------------------------------
+            */
 
-    } catch (\Throwable $e) {
-        report($e); // IMPORTANT: log real error
+            $this->authorize('view', $business);
 
-        return ApiResponse::error('Failed to retrieve business');
+            return ApiResponse::success(
+                new BusinessResource($business),
+                'Business retrieved successfully'
+            );
+
+        } catch (ModelNotFoundException $e) {
+
+            return ApiResponse::notFound(
+                'Business not found'
+            );
+
+        } catch (Throwable $e) {
+
+            report($e);
+
+            return ApiResponse::error(
+                'Failed to retrieve business',
+                [],
+                500
+            );
+        }
     }
-}
 
-    // =========================
-    // STORE
-    // =========================
+    /*
+    |--------------------------------------------------------------------------
+    | CREATE
+    |--------------------------------------------------------------------------
+    */
+
     public function store(StoreBusinessRequest $request)
     {
-            $business = $this->service->create($request->validated());
+        try {
+
+            /*
+            |--------------------------------------------------------------------------
+            | SERVER-SIDE AUTHORIZATION
+            |--------------------------------------------------------------------------
+            */
+
+            $this->authorize(
+                'create',
+                Business::class
+            );
+
+            $business = $this->service->create(
+                $request->validated()
+            );
 
             return ApiResponse::created(
                 new BusinessResource($business),
                 'Business created successfully'
             );
-    }
 
-    // =========================
-    // UPDATE
-    // =========================
-    public function update(UpdateBusinessRequest $request, $id)
-    {
-        try {
-            $business = $this->service->update($id, $request->validated());
+        } catch (Throwable $e) {
 
-            if (!$business) {
-                return ApiResponse::notFound('Business not found');
-            }
+            report($e);
 
-            return ApiResponse::success(
-                new BusinessResource($business),
-                'Business updated successfully'
+            return ApiResponse::error(
+                'Failed to create business',
+                [],
+                500
             );
-        } catch (\Exception $e) {
-            return ApiResponse::error($e->getMessage());
         }
     }
 
-    // =========================
-    // STATUS CHANGE
-    // =========================
-    public function changeStatus(Request $request, $id)
-    {
+    /*
+    |--------------------------------------------------------------------------
+    | UPDATE
+    |--------------------------------------------------------------------------
+    */
+
+    public function update(
+        UpdateBusinessRequest $request,
+        $id
+    ) {
         try {
-            $request->validate([
-                'status' => 'required|in:active,suspended,closed,informal,pending,approved'
-            ]);
 
-            $business = $this->service->changeStatus($id, $request->status);
+            $business = $this->service->find($id);
 
-            if (!$business) {
-                return ApiResponse::notFound('Business not found');
+            /*
+            |--------------------------------------------------------------------------
+            | OBJECT-LEVEL AUTHORIZATION
+            |--------------------------------------------------------------------------
+            */
+
+            $this->authorize(
+                'update',
+                $business
+            );
+
+            $updated = $this->service->update(
+                $id,
+                $request->validated()
+            );
+
+            if (!$updated) {
+                return ApiResponse::notFound(
+                    'Business not found'
+                );
             }
 
             return ApiResponse::success(
-                new BusinessResource($business),
+                new BusinessResource($updated),
+                'Business updated successfully'
+            );
+
+        } catch (ModelNotFoundException $e) {
+
+            return ApiResponse::notFound(
+                'Business not found'
+            );
+
+        } catch (Throwable $e) {
+
+            report($e);
+
+            return ApiResponse::error(
+                'Failed to update business',
+                [],
+                500
+            );
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | CHANGE STATUS
+    |--------------------------------------------------------------------------
+    */
+
+    public function changeStatus(
+        Request $request,
+        $id
+    ) {
+        try {
+
+            $request->validate([
+                'status' => [
+                    'required',
+                    'in:active,suspended,closed,informal,pending,approved',
+                ],
+            ]);
+
+            $business = $this->service->find($id);
+
+            /*
+            |--------------------------------------------------------------------------
+            | STATUS CHANGE IS A PRIVILEGED OPERATION
+            |--------------------------------------------------------------------------
+            */
+
+            $this->authorize(
+                'changeStatus',
+                $business
+            );
+
+            $updated = $this->service->changeStatus(
+                $id,
+                $request->string('status')->toString()
+            );
+
+            if (!$updated) {
+                return ApiResponse::notFound(
+                    'Business not found'
+                );
+            }
+
+            return ApiResponse::success(
+                new BusinessResource($updated),
                 'Status updated successfully'
             );
-        } catch (\Exception $e) {
-            return ApiResponse::error($e->getMessage());
+
+        } catch (ModelNotFoundException $e) {
+
+            return ApiResponse::notFound(
+                'Business not found'
+            );
+
+        } catch (Throwable $e) {
+
+            report($e);
+
+            return ApiResponse::error(
+                'Failed to update business status',
+                [],
+                500
+            );
+        }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | DELETE
+    |--------------------------------------------------------------------------
+    */
+
+    public function destroy($id)
+    {
+        try {
+
+            $business = $this->service->find($id);
+
+            $this->authorize(
+                'delete',
+                $business
+            );
+
+            $this->service->delete($business);
+
+            return ApiResponse::success(
+                null,
+                'Business deleted successfully'
+            );
+
+        } catch (ModelNotFoundException $e) {
+
+            return ApiResponse::notFound(
+                'Business not found'
+            );
+
+        } catch (Throwable $e) {
+
+            report($e);
+
+            return ApiResponse::error(
+                'Failed to delete business',
+                [],
+                500
+            );
         }
     }
 }

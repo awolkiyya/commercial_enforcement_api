@@ -10,12 +10,14 @@ use App\Modules\Auth\Controllers\RefreshTokenController;
 
 Route::prefix('auth')->name('auth.')->group(function () {
 
-    /*
+        /*
     |--------------------------------------------------------------------------
     | Public
     |--------------------------------------------------------------------------
     */
+
     Route::post('/login', [AuthController::class, 'login'])
+        ->middleware('throttle:login')
         ->name('login');
 
     /*

@@ -7,21 +7,26 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class LoginResource extends JsonResource
 {
-    private string $token;
+    /**
+     * Optional authentication token.
+     *
+     * Web authentication uses Laravel session authentication,
+     * so the token can be null.
+     *
+     * Mobile/API authentication can provide a Sanctum token.
+     */
+    private ?string $token;
 
-
-    public function __construct($resource, string $token)
+    public function __construct($resource, ?string $token = null)
     {
         parent::__construct($resource);
 
         $this->token = $token;
     }
 
-
-
     public function toArray(Request $request): array
     {
-        return [
+        $response = [
 
             /**
              * =========================
@@ -40,15 +45,11 @@ class LoginResource extends JsonResource
 
                 'avatar' => $this->avatar,
 
-
                 'is_active' => (bool) $this->is_active,
-
 
                 'role' => $this->role,
 
                 'level' => $this->level,
-
-
 
                 /**
                  * =========================
@@ -63,7 +64,6 @@ class LoginResource extends JsonResource
                     ]
                     : null,
 
-
                 'subcity' => $this->relationExists('subcity')
                     ? [
                         'id' => $this->subcity?->id,
@@ -71,15 +71,12 @@ class LoginResource extends JsonResource
                     ]
                     : null,
 
-
                 'wereda' => $this->relationExists('wereda')
                     ? [
                         'id' => $this->wereda?->id,
                         'name' => $this->wereda?->name,
                     ]
                     : null,
-
-
 
                 /**
                  * =========================
@@ -92,26 +89,44 @@ class LoginResource extends JsonResource
                 'permissions' => $this->formatPermissions(),
 
             ],
-
-
-
-            /**
-             * =========================
-             * AUTH TOKEN
-             * =========================
-             */
-
-            'accessToken' => $this->token,
-
-            'tokenType' => 'Bearer',
-
         ];
+
+        /**
+         * =========================
+         * OPTIONAL AUTH TOKEN
+         * =========================
+         *
+         * Only return token information when
+         * a token was explicitly provided.
+         *
+         * Web:
+         *
+         *     new LoginResource($user)
+         *
+         * No token fields will be returned.
+         *
+         * Mobile/API:
+         *
+         *     new LoginResource($user, $token)
+         *
+         * accessToken and tokenType will be returned.
+         */
+
+        if ($this->token !== null) {
+            $response['accessToken'] = $this->token;
+            $response['tokenType'] = 'Bearer';
+        }
+
+        return $response;
     }
 
-
-
     /**
-     * Check if relationship exists and loaded
+     * =========================
+     * CHECK RELATIONSHIP
+     * =========================
+     *
+     * Returns true only when the relationship
+     * has been loaded and contains a value.
      */
     private function relationExists(string $relation): bool
     {
@@ -119,34 +134,28 @@ class LoginResource extends JsonResource
             && !is_null($this->resource->{$relation});
     }
 
-
-
-
     /**
      * =========================
      * GROUP PERMISSIONS
      * =========================
      */
-
     private function formatPermissions(): array
     {
         $grouped = [];
 
-
         foreach ($this->getAllPermissions() as $permission) {
 
-            $parts = explode('.', $permission->name);
-
+            $parts = explode(
+                '.',
+                $permission->name
+            );
 
             $module = $parts[0] ?? 'general';
 
-
             $action = $parts[1] ?? $permission->name;
-
 
             $grouped[$module][] = $action;
         }
-
 
         return $grouped;
     }

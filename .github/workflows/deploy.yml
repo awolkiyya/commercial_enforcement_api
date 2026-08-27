@@ -52,30 +52,23 @@ jobs:
             git reset --hard origin/main
 
             echo "🔍 Current commit:"
-
             git rev-parse --short HEAD
 
 
             # =====================================================
-            # Enable maintenance mode if old app exists
-            # =====================================================
-
-            echo "🔒 Enabling maintenance mode..."
-
-            docker compose exec -T app \
-              php artisan down \
-              --retry=10 \
-              --refresh=5 \
-              2>/dev/null \
-              || true
-
-
-            # =====================================================
-            # Stop application containers
+            # Stop old containers
             #
             # IMPORTANT:
-            # This does NOT remove PostgreSQL data.
-            # Docker volumes remain untouched.
+            #
+            # No -v here.
+            #
+            # The PostgreSQL Docker volume is preserved.
+            #
+            # We will reset the DATABASE using:
+            #
+            # php artisan migrate:fresh --seed
+            #
+            # instead of deleting the Docker volume.
             # =====================================================
 
             echo "🛑 Stopping existing containers..."
@@ -84,10 +77,7 @@ jobs:
 
 
             # =====================================================
-            # Build completely fresh application images
-            #
-            # --pull = get latest base images
-            # --no-cache = do not reuse old Docker build layers
+            # Build fresh production images
             # =====================================================
 
             echo "🐳 Building fresh production images..."
@@ -101,21 +91,61 @@ jobs:
 
 
             # =====================================================
-            # Start fresh containers
+            # Start containers
             # =====================================================
 
-            echo "🚀 Starting fresh containers..."
+            echo "🚀 Starting containers..."
 
             docker compose up -d --remove-orphans
 
 
             # =====================================================
-            # Wait for PostgreSQL / application
+            # Wait for PostgreSQL
             # =====================================================
 
-            echo "⏳ Waiting for containers..."
+            echo "⏳ Waiting for PostgreSQL..."
 
-            sleep 10
+            POSTGRES_READY=false
+
+            for i in $(seq 1 30); do
+
+              if docker compose exec -T postgres \
+                pg_isready \
+                -U appuser \
+                -d appdb \
+                >/dev/null 2>&1; then
+
+                POSTGRES_READY=true
+
+                echo "✅ PostgreSQL is ready."
+
+                break
+
+              fi
+
+              echo "PostgreSQL not ready yet... attempt $i/30"
+
+              sleep 2
+
+            done
+
+
+            if [ "$POSTGRES_READY" != "true" ]; then
+
+              echo "❌ PostgreSQL did not become ready."
+
+              docker compose ps
+
+              docker compose logs postgres --tail=100
+
+              exit 1
+
+            fi
+
+
+            # =====================================================
+            # Container status
+            # =====================================================
 
             echo "📊 Container status..."
 
@@ -123,19 +153,17 @@ jobs:
 
 
             # =====================================================
-            # Verify application container
+            # Enable Laravel maintenance mode
             # =====================================================
 
-            echo "🐘 Checking PHP..."
+            echo "🔒 Enabling maintenance mode..."
 
             docker compose exec -T app \
-              php --version
-
-
-            echo "🔍 Checking Laravel..."
-
-            docker compose exec -T app \
-              php artisan about
+              php artisan down \
+              --retry=10 \
+              --refresh=5 \
+              2>/dev/null \
+              || true
 
 
             # =====================================================
@@ -149,26 +177,30 @@ jobs:
 
 
             # =====================================================
-            # Database migrations
+            # FRESH DATABASE
             # =====================================================
-
-            echo "🗄 Running database migrations..."
-
-            docker compose exec -T app \
-              php artisan migrate --force
-
-
-            # =====================================================
-            # Database seeders
             #
-            # IMPORTANT:
-            # All production seeders must be idempotent.
+            # WARNING:
+            #
+            # This completely destroys the current database.
+            #
+            # It:
+            #
+            # 1. Drops all tables
+            # 2. Re-runs every migration
+            # 3. Runs DatabaseSeeder
+            #
+            # PostgreSQL Docker volume itself is NOT deleted.
+            #
             # =====================================================
 
-            echo "🌱 Running database seeders..."
+            echo "🗄 Resetting database completely..."
 
             docker compose exec -T app \
-              php artisan db:seed --force
+              php artisan migrate:fresh --seed --force
+
+
+            echo "✅ Database migration and seeding completed."
 
 
             # =====================================================
@@ -225,9 +257,7 @@ jobs:
 
 
             # =====================================================
-            # Validate routes
-            #
-            # Do this BEFORE route:cache.
+            # Validate Laravel routes BEFORE caching
             # =====================================================
 
             echo "🔍 Validating Laravel routes..."
@@ -278,7 +308,7 @@ jobs:
 
 
             # =====================================================
-            # Final application validation
+            # Final Laravel validation
             # =====================================================
 
             echo "🔍 Final Laravel application check..."
@@ -288,7 +318,7 @@ jobs:
 
 
             # =====================================================
-            # Disable maintenance mode
+            # Verify application is not in maintenance mode
             # =====================================================
 
             echo "🟢 Disabling maintenance mode..."
@@ -313,6 +343,17 @@ jobs:
 
             echo ""
 
+            echo "✅ API health check passed."
+
+
+            # =====================================================
+            # Final container status
+            # =====================================================
+
+            echo "📊 Final container status..."
+
+            docker compose ps
+
 
             # =====================================================
             # Docker cleanup
@@ -322,14 +363,6 @@ jobs:
 
             docker image prune -f
 
-
-            # =====================================================
-            # Final status
-            # =====================================================
-
-            echo "📊 Final container status..."
-
-            docker compose ps
 
             echo "======================================"
             echo "✅ Commercial Enforcement API deployment completed"
