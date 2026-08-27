@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Modules\Governance\Controllers\CityController;
-use App\Modules\Governance\Controllers\SubcityController;
+use App\Modules\Governance\Controllers\SubCityController;
 use App\Modules\Governance\Controllers\WeredaController;
 use App\Modules\Governance\Controllers\SectorController;
 
@@ -27,7 +27,7 @@ Route::prefix('governance')->group(function () {
      * =====================================================
      */
     Route::prefix('subcities')->group(function () {
-        Route::get('/', [SubcityController::class, 'index']);
+        Route::get('/', [SubCityController::class, 'index']);
         // Route::post('/', [SubcityController::class, 'store']);
         // Route::get('/{subcity}', [SubcityController::class, 'show']);
         // Route::put('/{subcity}', [SubcityController::class, 'update']);

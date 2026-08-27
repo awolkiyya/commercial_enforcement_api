@@ -89,7 +89,6 @@ class StoreUserRequest extends FormRequest
                 'required',
                 'string',
                 'min:12',
-                'confirmed',
 
                 Password::min(12)
                     ->mixedCase()
@@ -226,7 +225,6 @@ class StoreUserRequest extends FormRequest
             'password.required' => 'Password is required.',
             'password.string' => 'Password must be a valid string.',
             'password.min' => 'Password must be at least 12 characters long.',
-            'password.confirmed' => 'Password confirmation does not match.',
 
             /*
             |--------------------------------------------------------------------------
@@ -254,7 +252,7 @@ class StoreUserRequest extends FormRequest
             'city_id.integer' => 'City ID must be a valid integer.',
             'city_id.exists' => 'The selected city does not exist.',
 
-            'subcity_id.integer' => 'Subcity ID must be a valid integer.',
+            'subcity_id.integer' => 'SubCity ID must be a valid integer.',
             'subcity_id.exists' => 'The selected subcity does not exist.',
 
             'wereda_id.integer' => 'Wereda ID must be a valid integer.',

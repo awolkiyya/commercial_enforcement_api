@@ -2,11 +2,11 @@
 
 namespace App\Policies;
 
-use App\Models\Subcity;
+use App\Models\SubCity;
 use App\Models\User;
 use App\Policies\Concerns\ChecksHierarchy;
 
-class SubcityPolicy
+class SubCityPolicy
 {
     use ChecksHierarchy;
 
@@ -26,7 +26,7 @@ class SubcityPolicy
      * VIEW SINGLE SUBCITY
      * =====================================================
      */
-    public function view(User $user, Subcity $subcity): bool
+    public function view(User $user, SubCity $subcity): bool
     {
         if ($user->hasRole('SUPER_ADMIN')) {
             return true;
@@ -39,7 +39,7 @@ class SubcityPolicy
 
         // SUPERVISOR (if assigned to subcity level)
         if ($user->hasRole('SUPERVISOR')) {
-            return $this->sameSubcity($user, $subcity);
+            return $this->sameSubCity($user, $subcity);
         }
 
         return false;
@@ -61,7 +61,7 @@ class SubcityPolicy
      * UPDATE SUBCITY
      * =====================================================
      */
-    public function update(User $user, Subcity $subcity): bool
+    public function update(User $user, SubCity $subcity): bool
     {
         if ($user->hasRole('SUPER_ADMIN')) {
             return true;
@@ -79,7 +79,7 @@ class SubcityPolicy
      * DELETE SUBCITY
      * =====================================================
      */
-    public function delete(User $user, Subcity $subcity): bool
+    public function delete(User $user, SubCity $subcity): bool
     {
         return $user->hasRole('SUPER_ADMIN');
     }

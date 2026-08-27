@@ -183,7 +183,7 @@ trait ChecksHierarchy
             && (string) $user->city_id === (string) $model->city_id;
     }
 
-    protected function sameSubcity(
+    protected function sameSubCity(
         User $user,
         Model $model
     ): bool {
@@ -249,7 +249,7 @@ trait ChecksHierarchy
                 $model
             ),
 
-            'SUBCITY' => $this->sameSubcity(
+            'SUBCITY' => $this->sameSubCity(
                 $user,
                 $model
             ),

@@ -65,7 +65,7 @@ class UserPolicy
         */
         if (
             $this->isSupervisor($user)
-            && $this->sameSubcity($user, $model)
+            && $this->sameSubCity($user, $model)
         ) {
             return true;
         }
@@ -194,7 +194,7 @@ class UserPolicy
         */
         if (
             $this->isSupervisor($user)
-            && $this->sameSubcity($user, $model)
+            && $this->sameSubCity($user, $model)
         ) {
             return true;
         }

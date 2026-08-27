@@ -122,7 +122,7 @@ class BusinessService
                 ]
             );
 
-            $subcity = \App\Models\Subcity::find($data['subcity_id']);
+            $subcity = \App\Models\SubCity::find($data['subcity_id']);
 
 
             // =========================
@@ -202,7 +202,7 @@ class BusinessService
             // Derive city_id fresh whenever subcity changes (or on every update, cheaply)
             $cityId = $business->city_id;
             if ($subcityId) {
-                $subcity = \App\Models\Subcity::find($subcityId);
+                $subcity = \App\Models\SubCity::find($subcityId);
                 $cityId = $subcity?->city_id ?? $cityId;
             }
 

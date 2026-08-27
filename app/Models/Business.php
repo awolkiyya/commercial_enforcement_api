@@ -48,7 +48,7 @@ class Business extends Model
     }
     public function subcity()
     {
-        return $this->belongsTo(Subcity::class);
+        return $this->belongsTo(SubCity::class);
     }
     public function wereda()
     {

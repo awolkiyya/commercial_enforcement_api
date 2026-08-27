@@ -4,7 +4,7 @@ namespace App\Modules\Users\Services;
 
 use App\Models\User;
 use App\Models\City;
-use App\Models\Subcity;
+use App\Models\SubCity;
 use App\Models\Wereda;
 use App\Services\Storage\ImageService;
 use App\Services\Scopes\UniversalScopeEngine;
@@ -776,7 +776,7 @@ class UserService
                 );
             }
 
-            $subcity = Subcity::find(
+            $subcity = SubCity::find(
                 $subcityId
             );
 

@@ -2,13 +2,13 @@
 namespace App\Modules\Governance\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\Subcity;
+use App\Models\SubCity;
 use Illuminate\Http\Request;
 use App\Support\ApiResponse;
 use App\Support\PaginatesResponse;
-use App\Modules\Governance\Resources\SubcityResource;
+use App\Modules\Governance\Resources\SubCityResource;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
-class SubcityController extends Controller
+class SubCityController extends Controller
 {
     use AuthorizesRequests, PaginatesResponse;
 
@@ -16,7 +16,7 @@ class SubcityController extends Controller
     {
 
 
-        $query = Subcity::with(['city']);
+        $query = SubCity::with(['city']);
 
 
         $query = $query->orderBy('name');
@@ -24,7 +24,7 @@ class SubcityController extends Controller
         $paginated = $query->paginate($request->get('per_page', 10));
 
         return ApiResponse::success(
-            SubcityResource::collection($paginated),
+            SubCityResource::collection($paginated),
             'Subcities fetched successfully',
             [
                 'current_page' => $paginated->currentPage(),

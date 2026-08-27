@@ -17,7 +17,7 @@ use App\Models\InspectionClosureRequest;
 
 // Policies
 use App\Policies\CityPolicy;
-use App\Policies\SubcityPolicy;
+use App\Policies\SubCityPolicy;
 use App\Policies\WeredaPolicy;
 use App\Policies\UserPolicy;
 use App\Policies\BusinessPolicy;
@@ -41,7 +41,7 @@ class AuthServiceProvider extends ServiceProvider
 
         City::class => CityPolicy::class,
 
-        Subcity::class => SubcityPolicy::class,
+        Subcity::class => SubCityPolicy::class,
 
         Wereda::class => WeredaPolicy::class,
 

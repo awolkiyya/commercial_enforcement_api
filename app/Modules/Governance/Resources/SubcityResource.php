@@ -3,7 +3,7 @@ namespace App\Modules\Governance\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 
-class SubcityResource extends JsonResource
+class SubCityResource extends JsonResource
 {
     public function toArray($request): array
     {

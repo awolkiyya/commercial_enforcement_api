@@ -38,7 +38,7 @@ class WeredaPolicy
         }
 
         if ($user->hasRole('SUPERVISOR')) {
-            return $this->sameSubcity($user, $wereda);
+            return $this->sameSubCity($user, $wereda);
         }
 
         if ($user->hasRole('INSPECTOR')) {

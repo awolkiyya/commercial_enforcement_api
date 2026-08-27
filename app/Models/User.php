@@ -11,7 +11,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\City;
-use App\Models\Subcity;
+use App\Models\SubCity;
 use App\Models\Wereda;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
@@ -70,7 +70,7 @@ class User extends Authenticatable
 
     public function subcity(): BelongsTo
     {
-        return $this->belongsTo(Subcity::class);
+        return $this->belongsTo(SubCity::class);
     }
 
     public function wereda(): BelongsTo
@@ -113,7 +113,7 @@ class User extends Authenticatable
         return $this->level === 'CITY';
     }
 
-    public function isSubcityLevel(): bool
+    public function isSubCityLevel(): bool
     {
         return $this->level === 'SUBCITY';
     }
@@ -180,7 +180,7 @@ class User extends Authenticatable
                 $q->where('city_id', $user->city_id);
             }
 
-            if ($user->isSubcityLevel()) {
+            if ($user->isSubCityLevel()) {
                 $q->where('subcity_id', $user->subcity_id)
                   ->orWhere('city_id', $user->city_id);
             }
@@ -200,7 +200,7 @@ class User extends Authenticatable
                 $q->where('city_id', $user->city_id);
             }
 
-            if ($user->isSubcityLevel()) {
+            if ($user->isSubCityLevel()) {
                 $q->where('subcity_id', $user->subcity_id);
             }
 
