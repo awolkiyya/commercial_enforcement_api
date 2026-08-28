@@ -34,6 +34,18 @@ class StoreUserRequest extends FormRequest
             'phone' => is_string($this->phone)
                 ? trim($this->phone)
                 : $this->phone,
+
+            'city_id' => is_string($this->city_id)
+                ? trim($this->city_id)
+                : $this->city_id,
+
+            'subcity_id' => is_string($this->subcity_id)
+                ? trim($this->subcity_id)
+                : $this->subcity_id,
+
+            'wereda_id' => is_string($this->wereda_id)
+                ? trim($this->wereda_id)
+                : $this->wereda_id,
         ]);
     }
 
@@ -74,15 +86,6 @@ class StoreUserRequest extends FormRequest
             |--------------------------------------------------------------------------
             | Password
             |--------------------------------------------------------------------------
-            |
-            | Production password policy:
-            | - Minimum 12 characters
-            | - Uppercase + lowercase
-            | - Number
-            | - Symbol
-            | - Not found in known compromised-password databases
-            | - Confirmation required
-            |
             */
 
             'password' => [
@@ -130,25 +133,28 @@ class StoreUserRequest extends FormRequest
 
             /*
             |--------------------------------------------------------------------------
-            | Administrative Unit
+            | Administrative Unit UUIDs
             |--------------------------------------------------------------------------
             */
 
             'city_id' => [
                 'nullable',
-                'integer',
+                'string',
+                'uuid',
                 'exists:cities,id',
             ],
 
             'subcity_id' => [
                 'nullable',
-                'integer',
+                'string',
+                'uuid',
                 'exists:subcities,id',
             ],
 
             'wereda_id' => [
                 'nullable',
-                'integer',
+                'string',
+                'uuid',
                 'exists:weredas,id',
             ],
 
@@ -249,13 +255,16 @@ class StoreUserRequest extends FormRequest
             |--------------------------------------------------------------------------
             */
 
-            'city_id.integer' => 'City ID must be a valid integer.',
+            'city_id.string' => 'City ID must be a valid string.',
+            'city_id.uuid' => 'City ID must be a valid UUID.',
             'city_id.exists' => 'The selected city does not exist.',
 
-            'subcity_id.integer' => 'SubCity ID must be a valid integer.',
+            'subcity_id.string' => 'SubCity ID must be a valid string.',
+            'subcity_id.uuid' => 'SubCity ID must be a valid UUID.',
             'subcity_id.exists' => 'The selected subcity does not exist.',
 
-            'wereda_id.integer' => 'Wereda ID must be a valid integer.',
+            'wereda_id.string' => 'Wereda ID must be a valid string.',
+            'wereda_id.uuid' => 'Wereda ID must be a valid UUID.',
             'wereda_id.exists' => 'The selected wereda does not exist.',
 
             /*

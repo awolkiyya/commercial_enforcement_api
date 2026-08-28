@@ -33,134 +33,182 @@ trait ChecksHierarchy
         return $user->hasRole('INSPECTOR');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | ROLE ASSIGNMENT HIERARCHY
-    |--------------------------------------------------------------------------
-    |
-    | This determines WHICH roles an authenticated user may assign.
-    |
-    | IMPORTANT:
-    |
-    | Spatie permission:
-    |     users.assign_role
-    |
-    | determines whether the user has the general ability to assign
-    | roles.
-    |
-    | This method determines which specific target role is permitted.
-    |
-    | Hierarchy:
-    |
-    | SUPER_ADMIN
-    |     -> ADMIN
-    |     -> SUPERVISOR
-    |     -> INSPECTOR
-    |
-    | ADMIN
-    |     -> SUPERVISOR
-    |     -> INSPECTOR
-    |
-    | SUPERVISOR
-    |     -> NONE
-    |
-    | INSPECTOR
-    |     -> NONE
-    |
-    | SUPER_ADMIN can NEVER be assigned through normal user-management
-    | operations.
-    |
-    |--------------------------------------------------------------------------
-    */
-
     protected function canAssignRole(
         User $user,
         string $targetRole
     ): bool {
         $targetRole = strtoupper(trim($targetRole));
-
+    
+        $isSystemAdmin = $this->isSystemAdmin($user);
+        $isAdmin = $this->isAdmin($user);
+        $isSupervisor = $this->isSupervisor($user);
+        $isInspector = $this->isInspector($user);
+    
         /*
         |--------------------------------------------------------------------------
-        | NEVER allow SUPER_ADMIN to be assigned through this hierarchy
-        |--------------------------------------------------------------------------
-        |
-        | This is an explicit deny rule.
-        |
-        | Even if someone accidentally adds SUPER_ADMIN to another role's
-        | allowed-role list later, this guard still blocks it.
-        |
+        | SUPER_ADMIN can NEVER be assigned normally
         |--------------------------------------------------------------------------
         */
-
+    
         if ($targetRole === 'SUPER_ADMIN') {
+    
+            \Log::warning(
+                'USER POLICY: Role hierarchy denied SUPER_ADMIN assignment',
+                [
+                    'auth_user_id' => $user->id,
+                    'auth_email' => $user->email,
+                    'auth_role_column' => $user->role,
+                    'spatie_roles' => $user->getRoleNames()->values()->toArray(),
+    
+                    'target_role' => $targetRole,
+    
+                    'is_system_admin' => $isSystemAdmin,
+                    'is_admin' => $isAdmin,
+                    'is_supervisor' => $isSupervisor,
+                    'is_inspector' => $isInspector,
+    
+                    'allowed' => false,
+    
+                    'reason' =>
+                        'SUPER_ADMIN cannot be assigned through normal user management.',
+                ]
+            );
+    
             return false;
         }
-
+    
         /*
         |--------------------------------------------------------------------------
-        | SUPER ADMIN
-        |--------------------------------------------------------------------------
-        |
-        | SUPER_ADMIN may assign all lower-level application roles.
-        |
+        | SUPER_ADMIN
         |--------------------------------------------------------------------------
         */
-
-        if ($this->isSystemAdmin($user)) {
-            return in_array($targetRole, [
-                'ADMIN',
-                'SUPERVISOR',
-                'INSPECTOR',
-            ], true);
+    
+        if ($isSystemAdmin) {
+    
+            $allowed = in_array(
+                $targetRole,
+                [
+                    'ADMIN',
+                    'SUPERVISOR',
+                    'INSPECTOR',
+                ],
+                true
+            );
+    
+            \Log::debug(
+                'USER POLICY: SUPER_ADMIN role hierarchy evaluated',
+                [
+                    'auth_user_id' => $user->id,
+                    'target_role' => $targetRole,
+                    'allowed' => $allowed,
+                    'allowed_roles' => [
+                        'ADMIN',
+                        'SUPERVISOR',
+                        'INSPECTOR',
+                    ],
+                ]
+            );
+    
+            return $allowed;
         }
-
+    
         /*
         |--------------------------------------------------------------------------
         | ADMIN
         |--------------------------------------------------------------------------
-        |
-        | ADMIN may assign operational roles below ADMIN.
-        |
-        |--------------------------------------------------------------------------
         */
-
-        if ($this->isAdmin($user)) {
-            return in_array($targetRole, [
-                'SUPERVISOR',
-                'INSPECTOR',
-            ], true);
+    
+        if ($isAdmin) {
+    
+            $allowed = in_array(
+                $targetRole,
+                [
+                    'SUPERVISOR',
+                    'INSPECTOR',
+                ],
+                true
+            );
+    
+            \Log::debug(
+                'USER POLICY: ADMIN role hierarchy evaluated',
+                [
+                    'auth_user_id' => $user->id,
+                    'target_role' => $targetRole,
+                    'allowed' => $allowed,
+                    'allowed_roles' => [
+                        'SUPERVISOR',
+                        'INSPECTOR',
+                    ],
+                ]
+            );
+    
+            return $allowed;
         }
-
+    
         /*
         |--------------------------------------------------------------------------
         | SUPERVISOR
         |--------------------------------------------------------------------------
         */
-
-        if ($this->isSupervisor($user)) {
+    
+        if ($isSupervisor) {
+    
+            \Log::debug(
+                'USER POLICY: SUPERVISOR role hierarchy denied',
+                [
+                    'auth_user_id' => $user->id,
+                    'target_role' => $targetRole,
+                    'allowed' => false,
+                    'reason' => 'SUPERVISOR cannot assign roles.',
+                ]
+            );
+    
             return false;
         }
-
+    
         /*
         |--------------------------------------------------------------------------
         | INSPECTOR
         |--------------------------------------------------------------------------
         */
-
-        if ($this->isInspector($user)) {
+    
+        if ($isInspector) {
+    
+            \Log::debug(
+                'USER POLICY: INSPECTOR role hierarchy denied',
+                [
+                    'auth_user_id' => $user->id,
+                    'target_role' => $targetRole,
+                    'allowed' => false,
+                    'reason' => 'INSPECTOR cannot assign roles.',
+                ]
+            );
+    
             return false;
         }
-
+    
         /*
         |--------------------------------------------------------------------------
-        | UNKNOWN ROLE
-        |--------------------------------------------------------------------------
-        |
-        | Fail closed.
-        |
+        | UNKNOWN ROLE → FAIL CLOSED
         |--------------------------------------------------------------------------
         */
-
+    
+        \Log::warning(
+            'USER POLICY: Unknown role - hierarchy denied',
+            [
+                'auth_user_id' => $user->id,
+                'auth_email' => $user->email,
+                'auth_role_column' => $user->role,
+                'spatie_roles' => $user->getRoleNames()->values()->toArray(),
+    
+                'target_role' => $targetRole,
+    
+                'allowed' => false,
+    
+                'reason' => 'Authenticated user has no recognized authorization role.',
+            ]
+        );
+    
         return false;
     }
 

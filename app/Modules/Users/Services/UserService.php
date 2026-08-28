@@ -449,9 +449,35 @@ class UserService
         |--------------------------------------------------------------------------
         | Explicit role assignment permission
         |--------------------------------------------------------------------------
+        |
+        | IMPORTANT — GUARD MISMATCH BUG (FIXED):
+        |
+        | This previously called `$actor->can('users.assign_role')`, which
+        | resolves through Laravel's Gate and checks permissions against
+        | whatever guard the Gate context considers "current" for the
+        | request (in this app, that can differ from the guard the
+        | user's Spatie roles/permissions actually belong to).
+        |
+        | In this application all roles/permissions are assigned on the
+        | `api` guard. UserPolicy::assignRole() already discovered and
+        | documented this exact discrepancy:
+        |
+        |     has_permission_via_can = false
+        |     has_permission_api     = true
+        |
+        | Using `$actor->can()` here caused this defense-in-depth check
+        | to DISAGREE with the policy that already authorized the same
+        | action moments earlier, incorrectly blocking legitimate
+        | SUPER_ADMIN / ADMIN role assignments as "privilege escalation
+        | attempts".
+        |
+        | Fix: check the permission explicitly against the `api` guard,
+        | exactly like the policy does, so both authorization layers are
+        | guaranteed to agree.
+        |--------------------------------------------------------------------------
         */
 
-        if (!$actor->can('users.assign_role')) {
+        if (!$this->hasApiPermission($actor, 'users.assign_role')) {
 
             $this->denyRoleAssignment(
                 $actor,
@@ -592,6 +618,45 @@ class UserService
             $targetRole,
             $targetUser
         );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | EXPLICIT API-GUARD PERMISSION CHECK
+    |--------------------------------------------------------------------------
+    |
+    | Mirrors UserPolicy::hasApiPermission(). Kept in sync intentionally:
+    | both the policy and the service must agree on how a permission is
+    | resolved, since the service performs a defense-in-depth re-check
+    | of the same ability.
+    |--------------------------------------------------------------------------
+    */
+
+    private function hasApiPermission(
+        User $user,
+        string $permission
+    ): bool {
+        try {
+            return $user->hasPermissionTo(
+                $permission,
+                'api'
+            );
+        } catch (\Throwable $e) {
+
+            Log::error(
+                'USER SERVICE: API permission check failed',
+                [
+                    'auth_user_id' => $user->id,
+                    'auth_email' => $user->email,
+                    'permission' => $permission,
+                    'guard' => 'api',
+                    'exception' => get_class($e),
+                    'error' => $e->getMessage(),
+                ]
+            );
+
+            return false;
+        }
     }
 
     /*
