@@ -49,12 +49,12 @@ class AuthService
 
         /*
         |--------------------------------------------------------------------------
-        | RATE LIMIT KEY
+        | RATE LIMIT KEYS
         |--------------------------------------------------------------------------
         |
         | Include both email and IP.
         |
-        | This prevents:
+        | This protects against:
         |
         | 1. Excessive attempts against one account.
         | 2. Excessive attempts from one IP.
@@ -77,13 +77,21 @@ class AuthService
                 self::MAX_RATE_LIMIT_ATTEMPTS
             )
         ) {
+            $retryAfterSeconds = RateLimiter::availableIn(
+                $emailKey
+            );
+
             return [
                 'success' => false,
                 'code' => 'TOO_MANY_LOGIN_ATTEMPTS',
-                'message' => 'Too many login attempts. Please try again later.',
+                'message' => $this->getRateLimitMessage(
+                    $retryAfterSeconds
+                ),
                 'details' => [
-                    'retry_after_seconds' => RateLimiter::availableIn(
-                        $emailKey
+                    'retry_after_seconds' => $retryAfterSeconds,
+
+                    'retry_after_minutes' => (int) ceil(
+                        $retryAfterSeconds / 60
                     ),
                 ],
             ];
@@ -101,13 +109,21 @@ class AuthService
                 self::MAX_RATE_LIMIT_ATTEMPTS
             )
         ) {
+            $retryAfterSeconds = RateLimiter::availableIn(
+                $ipKey
+            );
+
             return [
                 'success' => false,
                 'code' => 'TOO_MANY_LOGIN_ATTEMPTS',
-                'message' => 'Too many login attempts. Please try again later.',
+                'message' => $this->getRateLimitMessage(
+                    $retryAfterSeconds
+                ),
                 'details' => [
-                    'retry_after_seconds' => RateLimiter::availableIn(
-                        $ipKey
+                    'retry_after_seconds' => $retryAfterSeconds,
+
+                    'retry_after_minutes' => (int) ceil(
+                        $retryAfterSeconds / 60
                     ),
                 ],
             ];
@@ -208,10 +224,6 @@ class AuthService
             |--------------------------------------------------------------------------
             | DO NOT REVEAL WHETHER EMAIL EXISTS
             |--------------------------------------------------------------------------
-            |
-            | If the user does not exist, return the same response as
-            | an incorrect password.
-            |
             */
 
             if (!$user) {
@@ -291,12 +303,6 @@ class AuthService
         */
 
         if (!$user->is_active) {
-
-            /*
-            |--------------------------------------------------------------------------
-            | Don't reveal additional account information unnecessarily.
-            |--------------------------------------------------------------------------
-            */
 
             return [
                 'success' => false,
@@ -378,7 +384,60 @@ class AuthService
     }
 
     /**
-     * Generate human-readable lock message.
+     * Generate human-readable rate-limit message.
+     */
+    protected function getRateLimitMessage(
+        int $remainingSeconds
+    ): string {
+
+        if ($remainingSeconds <= 0) {
+            return 'You can try logging in again now.';
+        }
+
+        if ($remainingSeconds < 60) {
+
+            return sprintf(
+                'Too many login attempts. Please try again in %d %s.',
+                $remainingSeconds,
+                $remainingSeconds === 1
+                    ? 'second'
+                    : 'seconds'
+            );
+        }
+
+        $minutes = intdiv(
+            $remainingSeconds,
+            60
+        );
+
+        $seconds = $remainingSeconds % 60;
+
+        if ($seconds > 0) {
+
+            return sprintf(
+                'Too many login attempts. Please try again in %d %s and %d %s.',
+                $minutes,
+                $minutes === 1
+                    ? 'minute'
+                    : 'minutes',
+                $seconds,
+                $seconds === 1
+                    ? 'second'
+                    : 'seconds'
+            );
+        }
+
+        return sprintf(
+            'Too many login attempts. Please try again in %d %s.',
+            $minutes,
+            $minutes === 1
+                ? 'minute'
+                : 'minutes'
+        );
+    }
+
+    /**
+     * Generate human-readable account lock message.
      */
     protected function getLockMessage(
         int $remainingSeconds
